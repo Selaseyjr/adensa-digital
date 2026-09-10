@@ -1,0 +1,633 @@
+from app.config import SIMULATION_TIMESTAMP
+from app.database import get_connection
+from app.decision_engine import get_recommendation
+
+
+# ==================================================
+# WORKFLOW STATES
+# ==================================================
+
+PENDING_APPROVAL = "Pending Approval"
+APPROVED = "Approved"
+REJECTED = "Rejected"
+EXECUTED = "Executed"
+
+
+# ==================================================
+# VALID WORKFLOW TRANSITIONS
+# ==================================================
+
+VALID_TRANSITIONS = {
+    PENDING_APPROVAL: {
+        APPROVED,
+        REJECTED,
+    },
+    APPROVED: {
+        EXECUTED,
+    },
+}
+
+
+# ==================================================
+# WORKFLOW STATE VALIDATION
+# ==================================================
+
+def is_valid_transition(current_status, new_status):
+    """
+    Check whether a requested workflow state transition
+    is allowed by the Adensa Digital workflow.
+    """
+
+    allowed_states = VALID_TRANSITIONS.get(
+        current_status,
+        set(),
+    )
+
+    return new_status in allowed_states
+
+
+def validate_transition(current_status, new_status):
+    """
+    Validate a workflow transition.
+
+    Raises:
+        ValueError: If the requested transition is invalid.
+    """
+
+    if not is_valid_transition(
+        current_status,
+        new_status,
+    ):
+        raise ValueError(
+            f"Invalid workflow transition: "
+            f"{current_status} → {new_status}"
+        )
+
+
+# ==================================================
+# ACTION ID GENERATION
+# ==================================================
+
+def get_next_action_number(connection):
+    """
+    Determine the next recovery-action number from the
+    existing database records.
+
+    This prevents action IDs from restarting at ACT-000001
+    when new workflow actions are generated later.
+    """
+
+    cursor = connection.cursor()
+
+    actions = cursor.execute(
+        """
+        SELECT action_id
+        FROM recovery_actions
+        WHERE action_id LIKE 'ACT-%'
+        """
+    ).fetchall()
+
+    numbers = []
+
+    for action in actions:
+
+        action_id = action["action_id"]
+
+        try:
+            number = int(
+                action_id.replace("ACT-", "")
+            )
+
+            numbers.append(number)
+
+        except ValueError:
+            continue
+
+    if not numbers:
+        return 1
+
+    return max(numbers) + 1
+
+
+# ==================================================
+# CREATE RECOVERY ACTION
+# ==================================================
+
+def create_recovery_action(
+    connection,
+    result,
+    action_number,
+):
+    """
+    Create a pending recovery action from a decision-engine
+    recommendation.
+
+    The workflow engine consumes the recommendation.
+    It does not independently rank recovery options.
+    """
+
+    recommendation = result["recommendation"]
+
+    if recommendation is None:
+        return False
+
+    cursor = connection.cursor()
+
+    # --------------------------------------------------
+    # IDEMPOTENCY CHECK
+    # --------------------------------------------------
+    #
+    # An exception should not receive multiple active
+    # recovery actions at the same time.
+    #
+
+    existing_action = cursor.execute(
+        """
+        SELECT
+            action_id,
+            status
+        FROM recovery_actions
+        WHERE exception_id = ?
+          AND status IN (
+              'Pending Approval',
+              'Approved',
+              'Executed'
+          )
+        LIMIT 1
+        """,
+        (result["exception_id"],),
+    ).fetchone()
+
+    if existing_action:
+        return False
+
+    action_id = f"ACT-{action_number:06d}"
+
+    description = (
+        f"Recommended recovery: switch shipment to "
+        f"{recommendation['transport_mode']} using carrier "
+        f"{recommendation['carrier_id']}. "
+        f"Estimated cost: "
+        f"€{recommendation['estimated_cost']:,.2f}. "
+        f"Estimated transit: "
+        f"{recommendation['estimated_transit_days']} days. "
+        f"Risk score: "
+        f"{recommendation['risk_score']}."
+    )
+
+    cursor.execute(
+        """
+        INSERT INTO recovery_actions (
+            action_id,
+            exception_id,
+            option_id,
+            action_type,
+            description,
+            status
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            action_id,
+            result["exception_id"],
+            recommendation["option_id"],
+            "Recovery",
+            description,
+            PENDING_APPROVAL,
+        ),
+    )
+
+    return True
+
+
+# ==================================================
+# GENERATE WORKFLOW ACTIONS
+# ==================================================
+
+def generate_workflow_actions(connection):
+    """
+    Generate pending recovery actions for open exceptions
+    that have a feasible recommendation.
+    """
+
+    cursor = connection.cursor()
+
+    exceptions = cursor.execute(
+        """
+        SELECT exception_id
+        FROM exceptions
+        WHERE resolution_status = 'Open'
+        ORDER BY exception_id
+        """
+    ).fetchall()
+
+    created = 0
+    skipped = 0
+    no_recommendation = 0
+
+    next_action_number = get_next_action_number(
+        connection
+    )
+
+    for exception in exceptions:
+
+        result = get_recommendation(
+            connection,
+            exception["exception_id"],
+        )
+
+        if result is None:
+            no_recommendation += 1
+            continue
+
+        if result["recommendation"] is None:
+            no_recommendation += 1
+            continue
+
+        action_created = create_recovery_action(
+            connection,
+            result,
+            next_action_number,
+        )
+
+        if action_created:
+
+            created += 1
+            next_action_number += 1
+
+        else:
+
+            skipped += 1
+
+    connection.commit()
+
+    print("Workflow Generation")
+    print("=" * 50)
+
+    print(
+        f"Open exceptions evaluated: "
+        f"{len(exceptions)}"
+    )
+
+    print(
+        f"Recovery actions created: "
+        f"{created}"
+    )
+
+    print(
+        f"Exceptions without recommendation: "
+        f"{no_recommendation}"
+    )
+
+    print(
+        f"Existing actions skipped: "
+        f"{skipped}"
+    )
+
+    return {
+        "evaluated": len(exceptions),
+        "created": created,
+        "without_recommendation": no_recommendation,
+        "skipped": skipped,
+    }
+
+
+# ==================================================
+# APPROVE RECOVERY ACTION
+# ==================================================
+
+def approve_action(
+    connection,
+    action_id,
+    approved_by,
+):
+    """
+    Approve a pending recovery action.
+
+    Valid transition:
+
+        Pending Approval → Approved
+
+    Invalid transitions raise ValueError.
+    """
+
+    cursor = connection.cursor()
+
+    action = cursor.execute(
+        """
+        SELECT
+            action_id,
+            exception_id,
+            status
+        FROM recovery_actions
+        WHERE action_id = ?
+        """,
+        (action_id,),
+    ).fetchone()
+
+    if action is None:
+        raise ValueError(
+            f"Action {action_id} not found."
+        )
+
+    # --------------------------------------------------
+    # VALIDATE STATE TRANSITION
+    # --------------------------------------------------
+
+    validate_transition(
+        action["status"],
+        APPROVED,
+    )
+
+    # --------------------------------------------------
+    # CHECK EXCEPTION IS STILL OPEN
+    # --------------------------------------------------
+
+    exception = cursor.execute(
+        """
+        SELECT resolution_status
+        FROM exceptions
+        WHERE exception_id = ?
+        """,
+        (action["exception_id"],),
+    ).fetchone()
+
+    if exception is None:
+        raise ValueError(
+            f"Exception for action {action_id} "
+            f"was not found."
+        )
+
+    if exception["resolution_status"] != "Open":
+        raise ValueError(
+            f"Action {action_id} cannot be approved "
+            f"because its exception is no longer open."
+        )
+
+    # --------------------------------------------------
+    # UPDATE ACTION
+    # --------------------------------------------------
+
+    cursor.execute(
+        """
+        UPDATE recovery_actions
+        SET
+            status = ?,
+            approved_by = ?,
+            approved_at = ?
+        WHERE action_id = ?
+          AND status = ?
+        """,
+        (
+            APPROVED,
+            approved_by,
+            SIMULATION_TIMESTAMP,
+            action_id,
+            PENDING_APPROVAL,
+        ),
+    )
+
+    if cursor.rowcount != 1:
+        raise ValueError(
+            f"Approval could not be completed for "
+            f"action {action_id}."
+        )
+
+    connection.commit()
+
+    print(
+        f"✓ Action {action_id} approved by "
+        f"{approved_by}."
+    )
+
+    return True
+
+
+# ==================================================
+# REJECT RECOVERY ACTION
+# ==================================================
+
+def reject_action(
+    connection,
+    action_id,
+    rejected_by,
+):
+    """
+    Reject a pending recovery action.
+
+    Valid transition:
+
+        Pending Approval → Rejected
+
+    The current database schema has no separate
+    rejected_by or rejected_at fields, so the existing
+    approval audit fields temporarily store the workflow
+    actor and timestamp.
+
+    Invalid transitions raise ValueError.
+    """
+
+    cursor = connection.cursor()
+
+    action = cursor.execute(
+        """
+        SELECT
+            action_id,
+            status
+        FROM recovery_actions
+        WHERE action_id = ?
+        """,
+        (action_id,),
+    ).fetchone()
+
+    if action is None:
+        raise ValueError(
+            f"Action {action_id} not found."
+        )
+
+    # --------------------------------------------------
+    # VALIDATE STATE TRANSITION
+    # --------------------------------------------------
+
+    validate_transition(
+        action["status"],
+        REJECTED,
+    )
+
+    # --------------------------------------------------
+    # UPDATE ACTION
+    # --------------------------------------------------
+
+    cursor.execute(
+        """
+        UPDATE recovery_actions
+        SET
+            status = ?,
+            approved_by = ?,
+            approved_at = ?
+        WHERE action_id = ?
+          AND status = ?
+        """,
+        (
+            REJECTED,
+            rejected_by,
+            SIMULATION_TIMESTAMP,
+            action_id,
+            PENDING_APPROVAL,
+        ),
+    )
+
+    if cursor.rowcount != 1:
+        raise ValueError(
+            f"Rejection could not be completed for "
+            f"action {action_id}."
+        )
+
+    connection.commit()
+
+    print(
+        f"✓ Action {action_id} rejected by "
+        f"{rejected_by}."
+    )
+
+    return True
+
+
+# ==================================================
+# WORKFLOW SUMMARY
+# ==================================================
+
+def show_workflow_summary(connection):
+    """
+    Display the current recovery-action status distribution.
+    """
+
+    cursor = connection.cursor()
+
+    print("\nWorkflow Status")
+    print("=" * 50)
+
+    statuses = cursor.execute(
+        """
+        SELECT
+            status,
+            COUNT(*) AS count
+        FROM recovery_actions
+        GROUP BY status
+        ORDER BY count DESC
+        """
+    ).fetchall()
+
+    if not statuses:
+        print(
+            "No recovery actions exist yet."
+        )
+        return
+
+    for row in statuses:
+
+        print(
+            f"{row['status']}: "
+            f"{row['count']}"
+        )
+
+
+# ==================================================
+# SAMPLE RECOVERY ACTIONS
+# ==================================================
+
+def show_sample_actions(
+    connection,
+    limit=5,
+):
+    """
+    Display a small sample of recovery actions.
+    """
+
+    cursor = connection.cursor()
+
+    actions = cursor.execute(
+        """
+        SELECT
+            action_id,
+            exception_id,
+            option_id,
+            action_type,
+            description,
+            status,
+            approved_by,
+            approved_at
+        FROM recovery_actions
+        ORDER BY action_id
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+    print("\nSample Recovery Actions")
+    print("=" * 50)
+
+    for action in actions:
+
+        print(
+            f"\nAction: "
+            f"{action['action_id']}"
+        )
+
+        print(
+            f"Exception: "
+            f"{action['exception_id']}"
+        )
+
+        print(
+            f"Option: "
+            f"{action['option_id']}"
+        )
+
+        print(
+            f"Type: "
+            f"{action['action_type']}"
+        )
+
+        print(
+            f"Status: "
+            f"{action['status']}"
+        )
+
+        print(
+            f"Approved By: "
+            f"{action['approved_by']}"
+        )
+
+        print(
+            f"Approved At: "
+            f"{action['approved_at']}"
+        )
+
+        print(
+            f"Description: "
+            f"{action['description']}"
+        )
+
+
+# ==================================================
+# MAIN
+# ==================================================
+
+if __name__ == "__main__":
+
+    connection = get_connection()
+
+    try:
+
+        show_workflow_summary(
+            connection
+        )
+
+        show_sample_actions(
+            connection
+        )
+
+    finally:
+
+        connection.close()

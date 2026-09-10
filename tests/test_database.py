@@ -23,7 +23,6 @@ EXPECTED_SCHEMA = {
         "city",
         "service_level",
     ],
-
     "suppliers": [
         "supplier_id",
         "supplier_name",
@@ -33,7 +32,6 @@ EXPECTED_SCHEMA = {
         "average_lead_time_days",
         "active",
     ],
-
     "products": [
         "product_id",
         "product_name",
@@ -48,7 +46,6 @@ EXPECTED_SCHEMA = {
         "safety_stock",
         "active",
     ],
-
     "warehouses": [
         "warehouse_id",
         "warehouse_name",
@@ -56,14 +53,12 @@ EXPECTED_SCHEMA = {
         "country",
         "capacity_units",
     ],
-
     "carriers": [
         "carrier_id",
         "carrier_name",
         "transport_modes",
         "reliability_score",
     ],
-
     "orders": [
         "order_id",
         "customer_id",
@@ -75,7 +70,6 @@ EXPECTED_SCHEMA = {
         "status",
         "warehouse_id",
     ],
-
     "order_items": [
         "order_item_id",
         "order_id",
@@ -83,7 +77,6 @@ EXPECTED_SCHEMA = {
         "quantity",
         "unit_price",
     ],
-
     "inventory": [
         "inventory_id",
         "product_id",
@@ -96,7 +89,6 @@ EXPECTED_SCHEMA = {
         "inventory_status",
         "last_updated",
     ],
-
     "shipments": [
         "shipment_id",
         "order_id",
@@ -119,7 +111,6 @@ EXPECTED_SCHEMA = {
         "current_location",
         "last_updated",
     ],
-
     "shipment_events": [
         "event_id",
         "shipment_id",
@@ -128,7 +119,6 @@ EXPECTED_SCHEMA = {
         "location",
         "description",
     ],
-
     "exceptions": [
         "exception_id",
         "shipment_id",
@@ -140,7 +130,6 @@ EXPECTED_SCHEMA = {
         "resolution_status",
         "resolved_at",
     ],
-
     "recovery_options": [
         "option_id",
         "exception_id",
@@ -152,7 +141,6 @@ EXPECTED_SCHEMA = {
         "risk_score",
         "feasible",
     ],
-
     "recovery_actions": [
         "action_id",
         "exception_id",
@@ -174,7 +162,6 @@ EXPECTED_SCHEMA = {
 connection = sqlite3.connect(DATABASE_PATH)
 cursor = connection.cursor()
 
-# Enable foreign-key enforcement for this connection
 cursor.execute("PRAGMA foreign_keys = ON")
 
 
@@ -191,15 +178,12 @@ cursor.execute("""
 """)
 
 tables = {row[0] for row in cursor.fetchall()}
-
 expected_tables = set(EXPECTED_SCHEMA.keys())
 
 if tables == expected_tables:
     print("✓ All expected tables exist.")
 else:
     print("✗ Table structure mismatch.")
-    print("Missing:", expected_tables - tables)
-    print("Unexpected:", tables - expected_tables)
 
 
 # ==================================================
@@ -218,8 +202,6 @@ for table_name, expected_columns in EXPECTED_SCHEMA.items():
         print(f"✓ {table_name}")
     else:
         print(f"✗ {table_name}")
-        print("  Expected:", expected_columns)
-        print("  Found:   ", actual_columns)
 
 
 # ==================================================
@@ -238,9 +220,31 @@ else:
 
 
 # ==================================================
+# TEST 4 — MASTER DATA COUNTS
+# ==================================================
+
+print("\nChecking master data counts...")
+
+master_tables = [
+    "customers",
+    "suppliers",
+    "products",
+    "warehouses",
+    "carriers",
+]
+
+for table in master_tables:
+
+    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+    count = cursor.fetchone()[0]
+
+    print(f"✓ {table}: {count} records")
+
+
+# ==================================================
 # CLOSE DATABASE
 # ==================================================
 
 connection.close()
 
-print("\nDatabase schema validation complete.")
+print("\nDatabase validation complete.")

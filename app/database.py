@@ -1,13 +1,6 @@
 import sqlite3
-from pathlib import Path
 
-
-# ==================================================
-# DATABASE CONFIGURATION
-# ==================================================
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATABASE_PATH = BASE_DIR / "data" / "adensa.db"
+from app.config import DATABASE_PATH
 
 
 # ==================================================
@@ -16,8 +9,13 @@ DATABASE_PATH = BASE_DIR / "data" / "adensa.db"
 
 def get_connection():
     """Create and return a connection to the Adensa Digital database."""
+
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
+
+    # Foreign-key enforcement must be enabled for every SQLite connection.
+    connection.execute("PRAGMA foreign_keys = ON")
+
     return connection
 
 
@@ -28,14 +26,11 @@ def get_connection():
 def initialize_database():
     """Create all Adensa Digital database tables."""
 
-    # Make sure the data folder exists
+    # Make sure the data folder exists.
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     connection = get_connection()
     cursor = connection.cursor()
-
-    # Enable foreign key enforcement in SQLite
-    cursor.execute("PRAGMA foreign_keys = ON")
 
     # ==================================================
     # 1. CUSTOMERS
