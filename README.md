@@ -127,4 +127,12 @@ Focused on:
 
 **Digital Supply Chain Systems · Supply Chain Planning · ERP / SAP · Workflow Automation · AI & Agentic Systems**
 
+📌**Project Links**
+
+Live Application:
+adensa-digital-systems.streamlit.app
+
+Source Code:
+GitHub Repository — Selaseyjr/adensa-digital
+
 > **Understand the system. Improve the workflow. Build what comes next.**
