@@ -1,6 +1,9 @@
+import logging
 import sqlite3
 
 from app.config import DATABASE_PATH
+
+logger = logging.getLogger(__name__)
 
 
 # ==================================================
@@ -318,5 +321,6 @@ def initialize_database():
 # ==================================================
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     initialize_database()
-    print("Adensa Digital database initialized successfully.")
+    logger.info("Adensa Digital database initialized successfully.")

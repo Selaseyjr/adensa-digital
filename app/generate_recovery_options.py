@@ -1,22 +1,10 @@
-import sqlite3
-from pathlib import Path
+import logging
 from datetime import datetime
 
+from app.config import SIMULATION_DATE
+from app.database import get_connection
 
-# --------------------------------------------------
-# DATABASE CONFIGURATION
-# --------------------------------------------------
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATABASE_PATH = BASE_DIR / "data" / "adensa.db"
-
-
-def get_connection():
-    """Create a database connection."""
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------
@@ -89,11 +77,11 @@ def generate_recovery_options(connection):
     ).fetchone()["count"]
 
     if existing_options > 0:
-        print(
+        logger.info(
             f"Recovery options already exist "
             f"({existing_options} records)."
         )
-        print(
+        logger.info(
             "Clear the recovery_options table "
             "before regenerating."
         )
@@ -154,11 +142,11 @@ def generate_recovery_options(connection):
     ).fetchall()
 
     if not exceptions:
-        print("No open exceptions found.")
+        logger.info("No open exceptions found.")
         return
 
     if not carriers:
-        print("No carriers found.")
+        logger.info("No carriers found.")
         return
 
     # --------------------------------------------------
@@ -176,7 +164,7 @@ def generate_recovery_options(connection):
     #
 
     recovery_start_date = datetime.strptime(
-        "2026-09-10",
+        SIMULATION_DATE,
         "%Y-%m-%d"
     ).date()
 
@@ -505,7 +493,7 @@ def generate_recovery_options(connection):
 
     connection.commit()
 
-    print(
+    logger.info(
         f"✓ Created {options_created} recovery options"
     )
 
@@ -515,6 +503,8 @@ def generate_recovery_options(connection):
 # --------------------------------------------------
 
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO)
 
     connection = get_connection()
 

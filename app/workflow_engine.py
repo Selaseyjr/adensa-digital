@@ -1,6 +1,10 @@
+import logging
+
 from app.config import SIMULATION_TIMESTAMP
 from app.database import get_connection
 from app.decision_engine import get_recommendation
+
+logger = logging.getLogger(__name__)
 
 
 # ==================================================
@@ -261,25 +265,25 @@ def generate_workflow_actions(connection):
 
     connection.commit()
 
-    print("Workflow Generation")
-    print("=" * 50)
+    logger.info("Workflow Generation")
+    logger.info("=" * 50)
 
-    print(
+    logger.info(
         f"Open exceptions evaluated: "
         f"{len(exceptions)}"
     )
 
-    print(
+    logger.info(
         f"Recovery actions created: "
         f"{created}"
     )
 
-    print(
+    logger.info(
         f"Exceptions without recommendation: "
         f"{no_recommendation}"
     )
 
-    print(
+    logger.info(
         f"Existing actions skipped: "
         f"{skipped}"
     )
@@ -395,7 +399,7 @@ def approve_action(
 
     connection.commit()
 
-    print(
+    logger.info(
         f"✓ Action {action_id} approved by "
         f"{approved_by}."
     )
@@ -485,7 +489,7 @@ def reject_action(
 
     connection.commit()
 
-    print(
+    logger.info(
         f"✓ Action {action_id} rejected by "
         f"{rejected_by}."
     )
@@ -504,8 +508,8 @@ def show_workflow_summary(connection):
 
     cursor = connection.cursor()
 
-    print("\nWorkflow Status")
-    print("=" * 50)
+    logger.info("\nWorkflow Status")
+    logger.info("=" * 50)
 
     statuses = cursor.execute(
         """
@@ -519,14 +523,14 @@ def show_workflow_summary(connection):
     ).fetchall()
 
     if not statuses:
-        print(
+        logger.info(
             "No recovery actions exist yet."
         )
         return
 
     for row in statuses:
 
-        print(
+        logger.info(
             f"{row['status']}: "
             f"{row['count']}"
         )
@@ -564,47 +568,47 @@ def show_sample_actions(
         (limit,),
     ).fetchall()
 
-    print("\nSample Recovery Actions")
-    print("=" * 50)
+    logger.info("\nSample Recovery Actions")
+    logger.info("=" * 50)
 
     for action in actions:
 
-        print(
+        logger.info(
             f"\nAction: "
             f"{action['action_id']}"
         )
 
-        print(
+        logger.info(
             f"Exception: "
             f"{action['exception_id']}"
         )
 
-        print(
+        logger.info(
             f"Option: "
             f"{action['option_id']}"
         )
 
-        print(
+        logger.info(
             f"Type: "
             f"{action['action_type']}"
         )
 
-        print(
+        logger.info(
             f"Status: "
             f"{action['status']}"
         )
 
-        print(
+        logger.info(
             f"Approved By: "
             f"{action['approved_by']}"
         )
 
-        print(
+        logger.info(
             f"Approved At: "
             f"{action['approved_at']}"
         )
 
-        print(
+        logger.info(
             f"Description: "
             f"{action['description']}"
         )
@@ -615,6 +619,8 @@ def show_sample_actions(
 # ==================================================
 
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO)
 
     connection = get_connection()
 

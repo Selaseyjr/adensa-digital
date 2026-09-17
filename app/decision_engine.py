@@ -1,3 +1,5 @@
+import logging
+
 from app.config import (
     DECISION_WEIGHTS,
     COST_BENCHMARK,
@@ -5,6 +7,8 @@ from app.config import (
     RISK_BENCHMARK,
 )
 from app.database import get_connection
+
+logger = logging.getLogger(__name__)
 
 
 # ==================================================
@@ -314,58 +318,58 @@ def display_recommendation(result):
 
     if recommendation is None:
 
-        print(
+        logger.info(
             f"\nException: {result['exception_id']}"
         )
 
-        print(
+        logger.info(
             "No feasible recovery recommendation."
         )
 
         return
 
-    print(
+    logger.info(
         f"\nException: {result['exception_id']}"
     )
 
-    print(
+    logger.info(
         f"Shipment: {result['shipment_id']}"
     )
 
-    print(
+    logger.info(
         f"Priority: {result['priority']}"
     )
 
-    print(
+    logger.info(
         f"Severity: {result['severity']}"
     )
 
-    print(
+    logger.info(
         f"Recommended mode: "
         f"{recommendation['transport_mode']}"
     )
 
-    print(
+    logger.info(
         f"Decision score: "
         f"{recommendation['decision_score']}/100"
     )
 
-    print(
+    logger.info(
         f"Confidence: "
         f"{recommendation['confidence']}"
     )
 
-    print(
+    logger.info(
         f"Cost: "
         f"€{recommendation['estimated_cost']:,.2f}"
     )
 
-    print(
+    logger.info(
         f"Transit: "
         f"{recommendation['estimated_transit_days']} days"
     )
 
-    print(
+    logger.info(
         f"Risk: "
         f"{recommendation['risk_score']}"
     )
@@ -386,19 +390,19 @@ def display_recommendation(result):
         f"{recommendation['reason']}"
     )
 
-    print(f"Reason: {reason}")
+    logger.info(f"Reason: {reason}")
 
     alternatives = result["alternatives"]
 
     if not alternatives:
-        print("Alternatives: None feasible")
+        logger.info("Alternatives: None feasible")
         return
 
-    print("Alternatives:")
+    logger.info("Alternatives:")
 
     for option in alternatives:
 
-        print(
+        logger.info(
             f"  - {option['transport_mode']} | "
             f"Score: {option['decision_score']}/100 | "
             f"Cost: €{option['estimated_cost']:,.2f} | "
@@ -447,21 +451,21 @@ def run_decision_engine(connection):
         if index < 10:
             display_recommendation(result)
 
-    print("\n" + "=" * 55)
-    print("Decision Engine Summary")
-    print("=" * 55)
+    logger.info("\n" + "=" * 55)
+    logger.info("Decision Engine Summary")
+    logger.info("=" * 55)
 
-    print(
+    logger.info(
         f"Exceptions evaluated: "
         f"{len(exceptions)}"
     )
 
-    print(
+    logger.info(
         f"Recommendations available: "
         f"{recommendations}"
     )
 
-    print(
+    logger.info(
         f"Exceptions without feasible recommendation: "
         f"{without_recommendation}"
     )
@@ -472,6 +476,8 @@ def run_decision_engine(connection):
 # ==================================================
 
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO)
 
     connection = get_connection()
 

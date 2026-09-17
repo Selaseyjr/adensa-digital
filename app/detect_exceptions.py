@@ -1,25 +1,10 @@
-import sqlite3
+import logging
 from datetime import datetime
-from pathlib import Path
 
+from app.config import SIMULATION_TIMESTAMP
+from app.database import get_connection
 
-# --------------------------------------------------
-# DATABASE CONFIGURATION
-# --------------------------------------------------
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATABASE_PATH = BASE_DIR / "data" / "adensa.db"
-
-
-# --------------------------------------------------
-# DATABASE CONNECTION
-# --------------------------------------------------
-
-def get_connection():
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------
@@ -42,7 +27,7 @@ def detect_exceptions(connection):
     existing_count = cursor.fetchone()[0]
 
     if existing_count > 0:
-        print(
+        logger.info(
             f"✓ Exceptions already contain "
             f"{existing_count:,} records"
         )
@@ -69,7 +54,7 @@ def detect_exceptions(connection):
     shipments = cursor.fetchall()
 
     if not shipments:
-        print("⚠ No shipments found.")
+        logger.warning("⚠ No shipments found.")
         return
 
     # --------------------------------------------------
@@ -147,7 +132,7 @@ def detect_exceptions(connection):
                 shipment_id,
                 "Delivery Delay",
                 severity,
-                "2026-09-10 12:00:00",
+                SIMULATION_TIMESTAMP,
                 (
                     f"Estimated arrival "
                     f"{estimated_arrival.strftime('%Y-%m-%d')} "
@@ -184,14 +169,14 @@ def detect_exceptions(connection):
 
         connection.commit()
 
-        print(
+        logger.info(
             f"✓ Detected and created "
             f"{len(exception_records):,} exceptions"
         )
 
     else:
 
-        print("✓ No exceptions detected.")
+        logger.info("✓ No exceptions detected.")
 
 
 # --------------------------------------------------
@@ -199,6 +184,8 @@ def detect_exceptions(connection):
 # --------------------------------------------------
 
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO)
 
     connection = get_connection()
 

@@ -1,3 +1,5 @@
+import logging
+
 from app.config import DATABASE_PATH
 from app.database import get_connection, initialize_database
 from app.generate_data import (
@@ -11,6 +13,8 @@ from app.generate_data import (
 from app.detect_exceptions import detect_exceptions
 from app.generate_recovery_options import generate_recovery_options
 from app.workflow_engine import generate_workflow_actions
+
+logger = logging.getLogger(__name__)
 
 
 REQUIRED_TABLES = {
@@ -115,55 +119,55 @@ def initialize_adensa():
     """
 
     if database_contains_operational_data():
-        print("✓ Adensa Digital database already initialized.")
+        logger.info("✓ Adensa Digital database already initialized.")
         return
 
-    print("=" * 60)
-    print("ADENSA DIGITAL INITIALIZATION")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("ADENSA DIGITAL INITIALIZATION")
+    logger.info("=" * 60)
 
-    print("\n1. Initializing database schema...")
+    logger.info("\n1. Initializing database schema...")
     initialize_database()
 
     connection = get_connection()
 
     try:
-        print("\n2. Loading master data...")
+        logger.info("\n2. Loading master data...")
         insert_master_data(connection)
 
-        print("\n3. Generating orders...")
+        logger.info("\n3. Generating orders...")
         generate_orders(
             connection,
             number_of_orders=5000,
         )
 
-        print("\n4. Generating order items...")
+        logger.info("\n4. Generating order items...")
         generate_order_items(connection)
 
-        print("\n5. Generating inventory...")
+        logger.info("\n5. Generating inventory...")
         generate_inventory(connection)
 
-        print("\n6. Generating shipments...")
+        logger.info("\n6. Generating shipments...")
         generate_shipments(
             connection,
             number_of_shipments=5000,
         )
 
-        print("\n7. Generating shipment events...")
+        logger.info("\n7. Generating shipment events...")
         generate_shipment_events(connection)
 
-        print("\n8. Detecting shipment exceptions...")
+        logger.info("\n8. Detecting shipment exceptions...")
         detect_exceptions(connection)
 
-        print("\n9. Generating recovery options...")
+        logger.info("\n9. Generating recovery options...")
         generate_recovery_options(connection)
 
-        print("\n10. Generating workflow actions...")
+        logger.info("\n10. Generating workflow actions...")
         generate_workflow_actions(connection)
 
-        print("\n" + "=" * 60)
-        print("ADENSA DIGITAL INITIALIZATION COMPLETE")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("ADENSA DIGITAL INITIALIZATION COMPLETE")
+        logger.info("=" * 60)
 
     finally:
         connection.close()

@@ -1,34 +1,18 @@
-import sqlite3
+import logging
 import random
 from datetime import datetime, timedelta
-from pathlib import Path
+
+from app.database import get_connection
 
 
 # ==================================================
 # CONFIGURATION
 # ==================================================
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATABASE_PATH = BASE_DIR / "data" / "adensa.db"
-
 # Makes generated data reproducible
 random.seed(42)
 
-
-# ==================================================
-# DATABASE CONNECTION
-# ==================================================
-
-def get_connection():
-    """Create and return a connection to the Adensa Digital database."""
-
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-
-    # Enable foreign-key enforcement
-    connection.execute("PRAGMA foreign_keys = ON")
-
-    return connection
+logger = logging.getLogger(__name__)
 
 
 # ==================================================
@@ -187,7 +171,7 @@ def insert_master_data(connection):
 
     connection.commit()
 
-    print("✓ Master data verified")
+    logger.info("✓ Master data verified")
 
 
 # ==================================================
@@ -204,7 +188,7 @@ def generate_orders(connection, number_of_orders=5000):
     existing_orders = cursor.fetchone()[0]
 
     if existing_orders >= number_of_orders:
-        print(
+        logger.info(
             f"✓ Orders already contain "
             f"{existing_orders:,} records"
         )
@@ -328,7 +312,7 @@ def generate_orders(connection, number_of_orders=5000):
 
     connection.commit()
 
-    print(
+    logger.info(
         f"✓ {len(orders):,} new orders generated"
     )
 
@@ -459,12 +443,12 @@ def generate_order_items(connection):
 
         connection.commit()
 
-        print(
+        logger.info(
             f"✓ Added {len(new_items):,} order items"
         )
 
     else:
-        print(
+        logger.info(
             "✓ Order items already exist for all orders"
         )
 
@@ -506,7 +490,7 @@ def generate_inventory(connection):
     expected_count = len(products) * len(warehouses)
 
     if existing_count >= expected_count:
-        print(
+        logger.info(
             f"✓ Inventory already contains "
             f"{existing_count:,} records"
         )
@@ -608,7 +592,7 @@ def generate_inventory(connection):
 
     connection.commit()
 
-    print(
+    logger.info(
         f"✓ Added {len(new_inventory):,} inventory records"
     )
 
@@ -627,7 +611,7 @@ def generate_shipments(connection, number_of_shipments=5000):
     existing_count = cursor.fetchone()[0]
 
     if existing_count >= number_of_shipments:
-        print(
+        logger.info(
             f"✓ Shipments already contain "
             f"{existing_count:,} records"
         )
@@ -652,7 +636,7 @@ def generate_shipments(connection, number_of_shipments=5000):
     orders = cursor.fetchall()
 
     if not orders:
-        print("⚠ No orders found. Generate orders first.")
+        logger.warning("⚠ No orders found. Generate orders first.")
         return
 
     # --------------------------------------------------
@@ -1302,7 +1286,7 @@ def generate_shipments(connection, number_of_shipments=5000):
 
     connection.commit()
 
-    print(
+    logger.info(
         f"✓ Added "
         f"{len(shipment_records):,} shipments"
     )
@@ -1317,7 +1301,7 @@ def generate_shipment_events(connection):
     existing_count = cursor.fetchone()[0]
 
     if existing_count > 0:
-        print(
+        logger.info(
             f"✓ Shipment events already contain "
             f"{existing_count:,} records"
         )
@@ -1343,7 +1327,7 @@ def generate_shipment_events(connection):
     shipments = cursor.fetchall()
 
     if not shipments:
-        print("⚠ No shipments found. Generate shipments first.")
+        logger.warning("⚠ No shipments found. Generate shipments first.")
         return
 
     # --------------------------------------------------
@@ -1557,7 +1541,7 @@ def generate_shipment_events(connection):
 
     connection.commit()
 
-    print(
+    logger.info(
         f"✓ Added {len(event_records):,} shipment events"
     )
 
@@ -1566,6 +1550,8 @@ def generate_shipment_events(connection):
 # ==================================================
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+
     connection = get_connection()
 
     try:
@@ -1579,4 +1565,4 @@ if __name__ == "__main__":
     finally:
         connection.close()
 
-    print("\nData generation complete.")
+    logger.info("Data generation complete.")

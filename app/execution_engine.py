@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from app.config import (
@@ -9,6 +10,8 @@ from app.workflow_engine import (
     EXECUTED,
     validate_transition,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ==================================================
@@ -388,67 +391,67 @@ def execute_recovery_action(
     # 14. DISPLAY EXECUTION RESULT
     # --------------------------------------------------
 
-    print("\nRecovery Execution")
-    print("=" * 50)
+    logger.info("\nRecovery Execution")
+    logger.info("=" * 50)
 
-    print(
+    logger.info(
         f"Action: "
         f"{action_id}"
     )
 
-    print(
+    logger.info(
         f"Exception: "
         f"{action['exception_id']}"
     )
 
-    print(
+    logger.info(
         f"Shipment: "
         f"{exception['shipment_id']}"
     )
 
-    print(
+    logger.info(
         f"Transport mode: "
         f"{exception['transport_mode']} → "
         f"{option['transport_mode']}"
     )
 
-    print(
+    logger.info(
         f"Carrier: "
         f"{exception['carrier_id']} → "
         f"{option['carrier_id']}"
     )
 
-    print(
+    logger.info(
         f"Recovery execution: "
         f"{executed_at}"
     )
 
-    print(
+    logger.info(
         f"Recovery transit: "
         f"{recovery_transit_days} days"
     )
 
-    print(
+    logger.info(
         f"New estimated arrival: "
         f"{new_estimated_arrival_date}"
     )
 
-    print(
+    logger.info(
         f"Required delivery: "
         f"{exception['required_delivery_date']}"
     )
 
-    print(
+    logger.info(
         f"Event created: "
         f"{event_id}"
     )
 
-    print(
+    logger.info(
         f"Action status: "
         f"{EXECUTED}"
     )
 
-    print(
+    logger.info(
         f"Exception status: "
         f"{resolution_message}"
     )
@@ -502,65 +505,65 @@ def show_execution_result(
     ).fetchone()
 
     if result is None:
-        print(
+        logger.info(
             f"Action {action_id} not found."
         )
         return
 
-    print("\nExecution Result")
-    print("=" * 50)
+    logger.info("\nExecution Result")
+    logger.info("=" * 50)
 
-    print(
+    logger.info(
         f"Action: "
         f"{result['action_id']}"
     )
 
-    print(
+    logger.info(
         f"Exception: "
         f"{result['exception_id']}"
     )
 
-    print(
+    logger.info(
         f"Option: "
         f"{result['option_id']}"
     )
 
-    print(
+    logger.info(
         f"Action status: "
         f"{result['action_status']}"
     )
 
-    print(
+    logger.info(
         f"Executed at: "
         f"{result['executed_at']}"
     )
 
-    print(
+    logger.info(
         f"Shipment: "
         f"{result['shipment_id']}"
     )
 
-    print(
+    logger.info(
         f"Transport mode: "
         f"{result['transport_mode']}"
     )
 
-    print(
+    logger.info(
         f"Carrier: "
         f"{result['carrier_id']}"
     )
 
-    print(
+    logger.info(
         f"Estimated arrival: "
         f"{result['estimated_arrival']}"
     )
 
-    print(
+    logger.info(
         f"Exception status: "
         f"{result['resolution_status']}"
     )
 
-    print(
+    logger.info(
         f"Resolved at: "
         f"{result['resolved_at']}"
     )
@@ -572,15 +575,17 @@ def show_execution_result(
 
 if __name__ == "__main__":
 
+    logging.basicConfig(level=logging.INFO)
+
     connection = get_connection()
 
     try:
 
-        print(
+        logger.info(
             "Execution engine loaded successfully."
         )
 
-        print(
+        logger.info(
             "No recovery action was executed."
         )
 
