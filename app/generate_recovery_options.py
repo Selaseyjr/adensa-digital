@@ -44,6 +44,54 @@ TRANSPORT_PROFILES = {
 
 
 # --------------------------------------------------
+# OPTION ID GENERATION
+# --------------------------------------------------
+
+def get_next_option_number(connection):
+    """
+    Determine the next recovery-option number from the
+    existing database records.
+
+    This keeps option IDs deterministic and unique,
+    mirroring the action-ID approach in the workflow
+    engine, so every recovery option carries a stable
+    identity that decisions, actions and execution can
+    reference.
+    """
+
+    cursor = connection.cursor()
+
+    options = cursor.execute(
+        """
+        SELECT option_id
+        FROM recovery_options
+        WHERE option_id LIKE 'OPT-%'
+        """
+    ).fetchall()
+
+    numbers = []
+
+    for option in options:
+
+        option_id = option["option_id"]
+
+        try:
+            number = int(
+                option_id.replace("OPT-", "")
+            )
+
+            numbers.append(number)
+
+        except ValueError:
+            continue
+
+    if not numbers:
+        return 1
+
+    return max(numbers) + 1
+
+
+# --------------------------------------------------
 # RECOVERY ENGINE
 # --------------------------------------------------
 
@@ -169,6 +217,14 @@ def generate_recovery_options(connection):
     ).date()
 
     options_created = 0
+
+    # --------------------------------------------------
+    # DETERMINISTIC OPTION IDS
+    # --------------------------------------------------
+
+    next_option_number = get_next_option_number(
+        connection
+    )
 
     # --------------------------------------------------
     # PROCESS EACH EXCEPTION
@@ -463,9 +519,14 @@ def generate_recovery_options(connection):
             # INSERT RECOVERY OPTION
             # --------------------------------------------------
 
+            option_id = f"OPT-{next_option_number:06d}"
+
+            next_option_number += 1
+
             cursor.execute(
                 """
                 INSERT INTO recovery_options (
+                    option_id,
                     exception_id,
                     transport_mode,
                     carrier_id,
@@ -475,9 +536,10 @@ def generate_recovery_options(connection):
                     risk_score,
                     feasible
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    option_id,
                     exception["exception_id"],
                     mode,
                     selected_carrier["carrier_id"],
