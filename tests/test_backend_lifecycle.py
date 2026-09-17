@@ -63,7 +63,10 @@ def test_backend_lifecycle():
                 row["exception_id"],
             )
 
-            if recommendation is not None:
+            if (
+                recommendation is not None
+                and recommendation["recommendation"] is not None
+            ):
 
                 candidate = recommendation
                 selected_exception_id = row[
@@ -114,6 +117,25 @@ def test_backend_lifecycle():
         print(
             f"✓ Recovery action connected: "
             f"{action['action_id']}"
+        )
+
+        # --------------------------------------------------
+        # 4a. Confirm the action references the exact
+        #     option selected by the recommendation
+        # --------------------------------------------------
+
+        recommended_option_id = candidate[
+            "recommendation"
+        ]["option_id"]
+
+        assert (
+            action["option_id"]
+            == recommended_option_id
+        )
+
+        print(
+            f"✓ Action references recommended option: "
+            f"{action['option_id']}"
         )
 
         # --------------------------------------------------
