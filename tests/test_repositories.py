@@ -1045,3 +1045,207 @@ def test_get_execution_result(seeded_database):
 
     finally:
         connection.close()
+
+
+# ==================================================
+# ENTITY-LEVEL IDEMPOTENCY READS
+# ==================================================
+
+def test_get_shipment_ids_with_exceptions(seeded_database):
+    """
+    The idempotency read returns exactly the shipment IDs
+    already represented by an exception.
+    """
+
+    connection = seeded_database
+
+    try:
+        shipment_ids = exceptions_repo.get_shipment_ids_with_exceptions(
+            connection
+        )
+
+        assert shipment_ids == {"SHP-900001", "SHP-900002"}
+
+    finally:
+        connection.close()
+
+
+def test_get_next_exception_number_on_empty_database(temp_database):
+    """
+    On an empty database the next exception number is 1:
+    fresh bootstrap keeps the existing numbering behavior.
+    """
+
+    connection = temp_database
+
+    try:
+        assert exceptions_repo.get_next_exception_number(
+            connection
+        ) == 1
+
+    finally:
+        connection.close()
+
+
+def test_get_next_exception_number_continues_on_populated(
+    seeded_database,
+):
+    """
+    On a populated database the next exception number
+    continues after the highest existing EXC-% identifier,
+    avoiding primary-key collisions.
+    """
+
+    connection = seeded_database
+
+    try:
+        assert exceptions_repo.get_next_exception_number(
+            connection
+        ) == 900003
+
+    finally:
+        connection.close()
+
+
+def test_get_exception_ids_with_options(seeded_database):
+    """
+    The idempotency read is empty before generation and
+    contains exactly the exceptions that carry options
+    after it — the Low-severity exception stays excluded.
+    """
+
+    connection = seeded_database
+
+    try:
+        assert recovery_options_repo.get_exception_ids_with_options(
+            connection
+        ) == set()
+
+        generate_recovery_options(connection)
+
+        assert recovery_options_repo.get_exception_ids_with_options(
+            connection
+        ) == {"EXC-900002"}
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# GENERATOR ENTITY-LEVEL IDEMPOTENCY
+# ==================================================
+
+def test_generate_recovery_options_is_repeatable(seeded_database):
+    """
+    Running the generator twice creates no duplicate
+    options: the second run skips every exception that
+    already carries options.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        count_after_first = connection.execute(
+            "SELECT COUNT(*) FROM recovery_options"
+        ).fetchone()[0]
+
+        assert count_after_first == 3
+
+        generate_recovery_options(connection)
+
+        count_after_second = connection.execute(
+            "SELECT COUNT(*) FROM recovery_options"
+        ).fetchone()[0]
+
+        assert count_after_second == count_after_first
+
+    finally:
+        connection.close()
+
+
+def test_generate_recovery_options_processes_new_exceptions(
+    seeded_database,
+):
+    """
+    On a populated database the generator leaves existing
+    options untouched and processes only genuinely new
+    open exceptions.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        assert connection.execute(
+            "SELECT COUNT(*) FROM recovery_options"
+        ).fetchone()[0] == 3
+
+        # A new shipment with a new High-severity open
+        # exception arrives after the first generation run.
+        connection.execute(
+            """
+            INSERT INTO shipments (
+                shipment_id, order_id, carrier_id, origin,
+                destination, transport_mode, quantity, weight_kg,
+                volume_m3, priority, planned_departure,
+                actual_departure, planned_arrival,
+                estimated_arrival, actual_arrival, status,
+                shipping_cost, distance_km, current_location,
+                last_updated
+            )
+            VALUES (
+                'SHP-900003', 'ORD-900001', 'CAR-900001',
+                'Rotterdam', 'Hamburg', 'Sea', 80, 800, 4,
+                'Medium', '2026-09-12', '2026-09-12',
+                '2026-09-14', '2026-09-20', NULL, 'In Transit',
+                400, 1500, 'At sea', '2026-09-10 12:00:00'
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            INSERT INTO exceptions (
+                exception_id, shipment_id, exception_type,
+                severity, detected_at, description,
+                estimated_impact, resolution_status, resolved_at
+            )
+            VALUES (
+                'EXC-900003', 'SHP-900003', 'Delivery Delay',
+                'High', '2026-09-10 12:00:00',
+                'New fixture exception: six days late', 6000,
+                'Open', NULL
+            )
+            """
+        )
+
+        connection.commit()
+
+        generate_recovery_options(connection)
+
+        existing_options = (
+            recovery_options_repo.get_feasible_options_for_exception(
+                connection,
+                "EXC-900002",
+            )
+        )
+
+        new_options = (
+            recovery_options_repo.get_feasible_options_for_exception(
+                connection,
+                "EXC-900003",
+            )
+        )
+
+        assert len(existing_options) == 3
+        assert len(new_options) == 3
+        assert all(
+            option["exception_id"] == "EXC-900003"
+            for option in new_options
+        )
+
+    finally:
+        connection.close()

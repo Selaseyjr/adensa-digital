@@ -16,19 +16,20 @@ logger = logging.getLogger(__name__)
 def detect_exceptions(connection):
 
     # --------------------------------------------------
-    # CHECK EXISTING EXCEPTIONS
+    # ENTITY-LEVEL IDEMPOTENCY
     # --------------------------------------------------
 
-    existing_count = exceptions_repo.count_exceptions(
-        connection
-    )
+    # Shipments that are already represented by an
+    # exception are skipped, so repeated detection runs
+    # (and newly arrived shipments) can be processed on
+    # a populated database without duplicating
+    # exceptions.
 
-    if existing_count > 0:
-        logger.info(
-            f"✓ Exceptions already contain "
-            f"{existing_count:,} records"
+    existing_shipment_ids = (
+        exceptions_repo.get_shipment_ids_with_exceptions(
+            connection
         )
-        return
+    )
 
     # --------------------------------------------------
     # LOAD SHIPMENT + ORDER INFORMATION
@@ -48,11 +49,16 @@ def detect_exceptions(connection):
 
     exception_records = []
 
-    exception_number = 1
+    exception_number = exceptions_repo.get_next_exception_number(
+        connection
+    )
 
     for shipment in shipments:
 
         shipment_id = shipment["shipment_id"]
+
+        if shipment_id in existing_shipment_ids:
+            continue
 
         estimated_arrival = datetime.strptime(
             shipment["estimated_arrival"],

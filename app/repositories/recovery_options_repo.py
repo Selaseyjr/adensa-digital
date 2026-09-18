@@ -124,3 +124,26 @@ def get_option_by_id(
     ).fetchone()
 
     return option
+
+
+def get_exception_ids_with_options(connection):
+    """
+    Return the set of exception IDs that already carry
+    recovery options.
+
+    Entity-level idempotency read for the recovery-option
+    generator: exceptions in this set are skipped so the
+    generator can run repeatedly on a populated database
+    without duplicating options.
+    """
+
+    cursor = connection.cursor()
+
+    rows = cursor.execute(
+        """
+        SELECT DISTINCT exception_id
+        FROM recovery_options
+        """
+    ).fetchall()
+
+    return {row["exception_id"] for row in rows}

@@ -16,9 +16,12 @@ The detection module's rules under test:
       otherwise                    -> Low
 
 - Exception IDs are assigned EXC-000001, EXC-000002, ... in
-  shipment_id order (the repository read orders by shipment_id).
-- Duplicate guard: detection runs only while the exceptions
-  table is empty; any existing record suppresses the whole run.
+  shipment_id order (the repository read orders by shipment_id),
+  continuing from the highest existing number on populated
+  databases.
+- Entity-level idempotency: shipments already represented by
+  an exception are skipped, while genuinely new shipments are
+  detected on repeated runs.
 
 Tests use isolated temporary databases (temp_database /
 master_database / seeded_database fixtures) and never touch
@@ -352,24 +355,34 @@ def test_exception_ids_follow_shipment_order(
 
 
 # --------------------------------------------------
-# DUPLICATE GUARD
+# ENTITY-LEVEL IDEMPOTENCY
 # --------------------------------------------------
 
-def test_existing_exceptions_suppress_detection(seeded_database):
+def test_detection_skips_shipments_with_existing_exceptions(
+    seeded_database,
+):
     """
-    Any pre-existing exception record disables the whole
-    detection run: newly delayed shipments must NOT create
-    further exceptions.
+    Shipments already represented by an exception are
+    skipped; a genuinely new delayed shipment on a
+    populated database is still detected with a continued
+    exception number.
     """
 
     assert exceptions_repo.count_exceptions(seeded_database) == 2
 
     update_required_delivery_date(seeded_database, "2026-09-15")
+
+    # Re-running detection on the untouched fixture must
+    # not duplicate any exception.
+    detect_exceptions(seeded_database)
+
+    assert exceptions_repo.count_exceptions(seeded_database) == 2
+
     insert_shipment(
         seeded_database,
         "SHP-900003",
         "High",
-        "2026-09-25",  # 10 days late
+        "2026-09-25",  # 10 days late -> Critical
         "2026-09-15",
     )
 
@@ -377,12 +390,70 @@ def test_existing_exceptions_suppress_detection(seeded_database):
 
     exceptions = get_all_exceptions(seeded_database)
 
-    assert len(exceptions) == 2
-    assert exceptions_repo.count_exceptions(seeded_database) == 2
-    assert all(
-        row["exception_type"] != "Delivery Delay"
+    assert exceptions_repo.count_exceptions(seeded_database) == 3
+
+    new_exception = next(
+        row
         for row in exceptions
+        if row["shipment_id"] == "SHP-900003"
     )
+
+    assert new_exception["exception_id"] == "EXC-900003"
+    assert new_exception["exception_type"] == "Delivery Delay"
+    assert new_exception["severity"] == "Critical"
+
+    # The pre-existing records are untouched.
+    assert len(
+        [
+            row
+            for row in exceptions
+            if row["shipment_id"] != "SHP-900003"
+        ]
+    ) == 2
+
+
+def test_new_shipments_receive_sequential_continuation_ids(
+    seeded_database,
+):
+    """
+    Multiple newly eligible shipments receive unique,
+    sequential exception IDs continuing from the highest
+    existing number, following the shipment_id ordering of
+    the repository read independent of insert order.
+    """
+
+    assert exceptions_repo.count_exceptions(seeded_database) == 2
+
+    update_required_delivery_date(seeded_database, "2026-09-15")
+
+    # Insert out of shipment_id order on purpose.
+    insert_shipment(
+        seeded_database,
+        "SHP-900004",
+        "High",
+        "2026-09-16",  # 1 day late -> High
+        "2026-09-15",
+    )
+    insert_shipment(
+        seeded_database,
+        "SHP-900003",
+        "Medium",
+        "2026-09-18",  # 3 days late -> Medium
+        "2026-09-15",
+    )
+
+    detect_exceptions(seeded_database)
+
+    exceptions = get_all_exceptions(seeded_database)
+
+    assert [
+        (row["exception_id"], row["shipment_id"])
+        for row in exceptions
+        if row["shipment_id"] in ("SHP-900003", "SHP-900004")
+    ] == [
+        ("EXC-900003", "SHP-900003"),
+        ("EXC-900004", "SHP-900004"),
+    ]
 
 
 def test_second_run_is_idempotent(master_database, monkeypatch):

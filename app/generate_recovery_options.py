@@ -86,26 +86,19 @@ def generate_recovery_options(connection):
     cursor = connection.cursor()
 
     # --------------------------------------------------
-    # DUPLICATE PROTECTION
+    # ENTITY-LEVEL IDEMPOTENCY
     # --------------------------------------------------
 
-    existing_options = cursor.execute(
-        """
-        SELECT COUNT(*) AS count
-        FROM recovery_options
-        """
-    ).fetchone()["count"]
+    # Exceptions that already carry recovery options are
+    # skipped, so the generator can run repeatedly on a
+    # populated database (operational refresh) without
+    # duplicating options.
 
-    if existing_options > 0:
-        logger.info(
-            f"Recovery options already exist "
-            f"({existing_options} records)."
+    exceptions_with_options = (
+        recovery_options_repo.get_exception_ids_with_options(
+            connection
         )
-        logger.info(
-            "Clear the recovery_options table "
-            "before regenerating."
-        )
-        return
+    )
 
     # --------------------------------------------------
     # LOAD OPEN EXCEPTIONS
@@ -173,6 +166,9 @@ def generate_recovery_options(connection):
     # --------------------------------------------------
 
     for exception in exceptions:
+
+        if exception["exception_id"] in exceptions_with_options:
+            continue
 
         severity = exception["severity"]
         current_mode = exception["transport_mode"]

@@ -316,3 +316,71 @@ def get_open_exception_ids(connection):
         ORDER BY exception_id
         """
     ).fetchall()
+
+
+def get_shipment_ids_with_exceptions(connection):
+    """
+    Return the set of shipment IDs that are already
+    represented by an exception.
+
+    Entity-level idempotency read for the detection
+    module: shipments in this set are skipped on
+    repeated detection runs, so newly arrived shipments
+    can be processed on an already-populated database
+    without duplicating exceptions.
+    """
+
+    cursor = connection.cursor()
+
+    rows = cursor.execute(
+        """
+        SELECT DISTINCT shipment_id
+        FROM exceptions
+        """
+    ).fetchall()
+
+    return {row["shipment_id"] for row in rows}
+
+
+def get_next_exception_number(connection):
+    """
+    Determine the next exception number from the existing
+    database records.
+
+    This keeps exception IDs deterministic and unique
+    across repeated detection runs, mirroring the
+    option-ID approach in the recovery-options
+    repository, so detection can continue numbering on a
+    populated database without primary-key collisions.
+    """
+
+    cursor = connection.cursor()
+
+    exceptions = cursor.execute(
+        """
+        SELECT exception_id
+        FROM exceptions
+        WHERE exception_id LIKE 'EXC-%'
+        """
+    ).fetchall()
+
+    numbers = []
+
+    for exception in exceptions:
+
+        exception_id = exception["exception_id"]
+
+        try:
+            number = int(
+                exception_id.replace("EXC-", "")
+            )
+
+            numbers.append(number)
+
+        except ValueError:
+            continue
+
+    if not numbers:
+        return 1
+
+    return max(numbers) + 1
