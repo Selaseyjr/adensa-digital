@@ -2,6 +2,7 @@ import streamlit as st
 
 from app import services
 from app.database import get_connection
+from app.errors import RecoveryWorkflowError
 from app.workflow_engine import (
     PENDING_APPROVAL,
     APPROVED,
@@ -541,7 +542,7 @@ def main():
 
                                     st.rerun()
 
-                                except Exception as error:
+                                except RecoveryWorkflowError as error:
 
                                     st.error(
                                         f"Approval failed: {error}"
@@ -573,7 +574,7 @@ def main():
 
                                     st.rerun()
 
-                                except Exception as error:
+                                except RecoveryWorkflowError as error:
 
                                     st.error(
                                         f"Rejection failed: {error}"
@@ -609,7 +610,7 @@ def main():
 
                             st.rerun()
 
-                        except Exception as error:
+                        except RecoveryWorkflowError as error:
 
                             st.session_state.last_workflow_outcome = {
                                 "success": False,
