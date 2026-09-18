@@ -8,6 +8,8 @@ lifecycle tests. All tests run on the seeded_database
 fixture; the development database is never touched.
 """
 
+import pytest
+
 from app import services
 from app.generate_recovery_options import generate_recovery_options
 from app.repositories import recovery_actions_repo
@@ -58,11 +60,6 @@ def _approve(
         connection,
         action["action_id"],
         "Service Test",
-        "SHP-900002",
-        "Sea",
-        "Road",
-        "CAR-900001",
-        "2026-09-15",
     )
 
 
@@ -239,9 +236,6 @@ def test_reject_recovery_preserves_workflow_behavior(seeded_database):
             connection,
             action["action_id"],
             "Service Test",
-            "SHP-900002",
-            "Sea",
-            "2026-09-15",
         )
 
         assert outcome["success"] is True
@@ -393,6 +387,50 @@ def test_execute_approved_recovery_failure_outcome(seeded_database):
 
         assert outcome["success"] is False
         assert "Recovery execution failed:" in outcome["message"]
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# MISSING ACTION CONTRACT
+# ==================================================
+
+def test_approve_recovery_missing_action_raises(seeded_database):
+    """
+    Approving an unknown action raises the workflow
+    engine's not-found error; no outcome is produced.
+    """
+
+    connection = seeded_database
+
+    try:
+        with pytest.raises(ValueError):
+            services.approve_recovery(
+                connection,
+                "ACT-999999",
+                "Service Test",
+            )
+
+    finally:
+        connection.close()
+
+
+def test_reject_recovery_missing_action_raises(seeded_database):
+    """
+    Rejecting an unknown action raises the workflow
+    engine's not-found error; no outcome is produced.
+    """
+
+    connection = seeded_database
+
+    try:
+        with pytest.raises(ValueError):
+            services.reject_recovery(
+                connection,
+                "ACT-999999",
+                "Service Test",
+            )
 
     finally:
         connection.close()

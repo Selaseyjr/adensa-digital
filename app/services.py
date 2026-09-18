@@ -34,6 +34,7 @@ from app.decision_engine import get_recommendation
 from app.execution_engine import execute_recovery_action
 from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
+from app.repositories import recovery_options_repo
 from app.repositories import shipments_repo
 from app.workflow_engine import (
     approve_action,
@@ -118,28 +119,41 @@ def approve_recovery(
     connection,
     action_id,
     approved_by,
-    shipment_id,
-    previous_mode,
-    recovery_mode,
-    recovery_carrier_id,
-    required_delivery,
 ):
     """
     Approve a pending recovery action and return the
-    application outcome dictionary for the UI.
+    application outcome dictionary.
 
-    The workflow transition itself is performed by the
-    workflow engine, including its transaction boundary.
+    The workflow transition is performed by the workflow
+    engine, including its transaction boundary and its
+    validation: a missing action, an invalid transition or
+    a closed exception raises before any state changes.
 
-    The caller supplies the display context (shipment,
-    current mode, recommended mode and carrier) captured
-    by the frontend before the action.
+    The outcome context is resolved from application state
+    through the repositories: the action's exception and
+    option identity, the exception's operational context
+    and the recovery option stored on the action.
     """
 
     approve_action(
         connection,
         action_id,
         approved_by,
+    )
+
+    action = recovery_actions_repo.get_action_by_id(
+        connection,
+        action_id,
+    )
+
+    context = exceptions_repo.get_exception_operational_context(
+        connection,
+        action["exception_id"],
+    )
+
+    option = recovery_options_repo.get_option_by_id(
+        connection,
+        action["option_id"],
     )
 
     return {
@@ -150,13 +164,13 @@ def approve_recovery(
             f"approved successfully."
         ),
         "action_id": action_id,
-        "shipment_id": shipment_id,
-        "previous_mode": previous_mode,
-        "new_mode": recovery_mode,
-        "carrier_id": recovery_carrier_id,
+        "shipment_id": context["shipment_id"],
+        "previous_mode": context["transport_mode"],
+        "new_mode": option["transport_mode"],
+        "carrier_id": option["carrier_id"],
         "new_eta": "Pending execution",
         "recovery_event": "Pending execution",
-        "required_delivery": required_delivery,
+        "required_delivery": context["required_delivery_date"],
         "exception_status": "Open",
     }
 
@@ -165,19 +179,32 @@ def reject_recovery(
     connection,
     action_id,
     rejected_by,
-    shipment_id,
-    previous_mode,
-    required_delivery,
 ):
     """
     Reject a pending recovery action and return the
-    application outcome dictionary for the UI.
+    application outcome dictionary.
+
+    The workflow transition is performed by the workflow
+    engine, including its transaction boundary and its
+    validation. No recovery option is consulted: rejection
+    does not execute anything, so the outcome carries the
+    existing sentinel values.
     """
 
     reject_action(
         connection,
         action_id,
         rejected_by,
+    )
+
+    action = recovery_actions_repo.get_action_by_id(
+        connection,
+        action_id,
+    )
+
+    context = exceptions_repo.get_exception_operational_context(
+        connection,
+        action["exception_id"],
     )
 
     return {
@@ -188,13 +215,13 @@ def reject_recovery(
             f"rejected."
         ),
         "action_id": action_id,
-        "shipment_id": shipment_id,
-        "previous_mode": previous_mode,
-        "new_mode": previous_mode,
+        "shipment_id": context["shipment_id"],
+        "previous_mode": context["transport_mode"],
+        "new_mode": context["transport_mode"],
         "carrier_id": "No execution",
         "new_eta": "No execution",
         "recovery_event": "None",
-        "required_delivery": required_delivery,
+        "required_delivery": context["required_delivery_date"],
         "exception_status": "Open",
     }
 

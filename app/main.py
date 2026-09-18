@@ -537,11 +537,6 @@ def main():
                                         connection,
                                         action["action_id"],
                                         approver_name.strip(),
-                                        selected_exception["shipment_id"],
-                                        selected_exception["transport_mode"],
-                                        recovery["transport_mode"],
-                                        recovery["carrier_id"],
-                                        selected_exception["required_delivery_date"],
                                     )
 
                                     st.rerun()
@@ -574,9 +569,6 @@ def main():
                                         connection,
                                         action["action_id"],
                                         approver_name.strip(),
-                                        selected_exception["shipment_id"],
-                                        selected_exception["transport_mode"],
-                                        selected_exception["required_delivery_date"],
                                     )
 
                                     st.rerun()
