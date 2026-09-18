@@ -1,19 +1,13 @@
 import streamlit as st
 
+from app import services
 from app.database import get_connection
-from app.decision_engine import get_recommendation
-from app.repositories import exceptions_repo
-from app.repositories import recovery_actions_repo
-from app.repositories import shipments_repo
 from app.workflow_engine import (
-    approve_action,
-    reject_action,
     PENDING_APPROVAL,
     APPROVED,
     REJECTED,
     EXECUTED,
 )
-from app.execution_engine import execute_recovery_action
 
 
 st.set_page_config(
@@ -91,18 +85,15 @@ def main():
         # KPI DATA
         # --------------------------------------------------
 
-        open_exceptions = exceptions_repo.count_open_exceptions(
+        metrics = services.get_dashboard_metrics(
             connection,
         )
 
-        critical_exceptions = exceptions_repo.count_open_critical_exceptions(
-            connection,
-        )
+        open_exceptions = metrics["open_exceptions"]
 
-        pending_approvals = recovery_actions_repo.count_actions_by_status(
-            connection,
-            status="Pending Approval",
-        )
+        critical_exceptions = metrics["critical_exceptions"]
+
+        pending_approvals = metrics["pending_approvals"]
 
         col1, col2, col3 = st.columns(3)
 
@@ -233,7 +224,7 @@ def main():
 
         st.header("Exception Inbox")
 
-        exceptions = exceptions_repo.get_open_exceptions_inbox(
+        exceptions = services.get_exception_inbox(
             connection,
         )
 
@@ -349,7 +340,7 @@ def main():
 
         st.header("Decision Engine")
 
-        recommendation_result = get_recommendation(
+        recommendation_result = services.get_exception_review(
             connection,
             selected_exception_id,
         )
@@ -474,7 +465,7 @@ def main():
 
             st.header("Workflow Action")
 
-            action = recovery_actions_repo.get_latest_action_for_exception(
+            action = services.get_latest_action(
                 connection,
                 selected_exception_id,
             )
@@ -542,39 +533,16 @@ def main():
 
                                 try:
 
-                                    approve_action(
+                                    st.session_state.last_workflow_outcome = services.approve_recovery(
                                         connection,
                                         action["action_id"],
                                         approver_name.strip(),
+                                        selected_exception["shipment_id"],
+                                        selected_exception["transport_mode"],
+                                        recovery["transport_mode"],
+                                        recovery["carrier_id"],
+                                        selected_exception["required_delivery_date"],
                                     )
-
-                                    st.session_state.last_workflow_outcome = {
-                                        "success": True,
-                                        "message": (
-                                            f"Recovery action "
-                                            f"{action['action_id']} "
-                                            f"approved successfully."
-                                        ),
-                                        "action_id": action["action_id"],
-                                        "shipment_id": selected_exception[
-                                            "shipment_id"
-                                        ],
-                                        "previous_mode": selected_exception[
-                                            "transport_mode"
-                                        ],
-                                        "new_mode": recovery[
-                                            "transport_mode"
-                                        ],
-                                        "carrier_id": recovery[
-                                            "carrier_id"
-                                        ],
-                                        "new_eta": "Pending execution",
-                                        "recovery_event": "Pending execution",
-                                        "required_delivery": selected_exception[
-                                            "required_delivery_date"
-                                        ],
-                                        "exception_status": "Open",
-                                    }
 
                                     st.rerun()
 
@@ -602,37 +570,14 @@ def main():
 
                                 try:
 
-                                    reject_action(
+                                    st.session_state.last_workflow_outcome = services.reject_recovery(
                                         connection,
                                         action["action_id"],
                                         approver_name.strip(),
+                                        selected_exception["shipment_id"],
+                                        selected_exception["transport_mode"],
+                                        selected_exception["required_delivery_date"],
                                     )
-
-                                    st.session_state.last_workflow_outcome = {
-                                        "success": True,
-                                        "message": (
-                                            f"Recovery action "
-                                            f"{action['action_id']} "
-                                            f"rejected."
-                                        ),
-                                        "action_id": action["action_id"],
-                                        "shipment_id": selected_exception[
-                                            "shipment_id"
-                                        ],
-                                        "previous_mode": selected_exception[
-                                            "transport_mode"
-                                        ],
-                                        "new_mode": selected_exception[
-                                            "transport_mode"
-                                        ],
-                                        "carrier_id": "No execution",
-                                        "new_eta": "No execution",
-                                        "recovery_event": "None",
-                                        "required_delivery": selected_exception[
-                                            "required_delivery_date"
-                                        ],
-                                        "exception_status": "Open",
-                                    }
 
                                     st.rerun()
 
@@ -661,77 +606,13 @@ def main():
 
                         try:
 
-                            # Capture the current shipment state
-                            # before execution.
-                            previous_shipment = shipments_repo.get_shipment_transport_mode_and_carrier(
-                                connection,
-                                selected_exception["shipment_id"],
-                            )
-
-                            previous_mode = (
-                                previous_shipment["transport_mode"]
-                            )
-
-                            result = execute_recovery_action(
+                            st.session_state.last_workflow_outcome = services.execute_approved_recovery(
                                 connection,
                                 action["action_id"],
-                            )
-
-                            # Read the updated shipment.
-                            updated_shipment = shipments_repo.get_shipment_delivery_state(
-                                connection,
-                                selected_exception["shipment_id"],
-                            )
-
-                            # Read the recovery event.
-                            recovery_event = shipments_repo.get_latest_recovery_event_id(
-                                connection,
-                                selected_exception["shipment_id"],
-                            )
-
-                            # Read final exception status.
-                            final_exception = exceptions_repo.get_exception_resolution_status(
-                                connection,
                                 selected_exception_id,
+                                selected_exception["shipment_id"],
+                                selected_exception["required_delivery_date"],
                             )
-
-                            exception_status = (
-                                final_exception[
-                                    "resolution_status"
-                                ]
-                            )
-
-                            st.session_state.last_workflow_outcome = {
-                                "success": True,
-                                "message": (
-                                    f"Recovery executed successfully "
-                                    f"for "
-                                    f"{selected_exception['shipment_id']}."
-                                ),
-                                "action_id": action["action_id"],
-                                "shipment_id": selected_exception[
-                                    "shipment_id"
-                                ],
-                                "previous_mode": previous_mode,
-                                "new_mode": updated_shipment[
-                                    "transport_mode"
-                                ],
-                                "carrier_id": updated_shipment[
-                                    "carrier_id"
-                                ],
-                                "new_eta": updated_shipment[
-                                    "estimated_arrival"
-                                ],
-                                "recovery_event": (
-                                    recovery_event["event_id"]
-                                    if recovery_event
-                                    else "Not recorded"
-                                ),
-                                "required_delivery": selected_exception[
-                                    "required_delivery_date"
-                                ],
-                                "exception_status": exception_status,
-                            }
 
                             # Tell the next Streamlit run to bring
                             # the outcome into view.
