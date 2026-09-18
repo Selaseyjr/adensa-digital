@@ -1,28 +1,54 @@
-from app.database import get_connection
 from app.decision_engine import get_recommendation
+from app.generate_recovery_options import generate_recovery_options
 from app.workflow_engine import (
     APPROVED,
     EXECUTED,
     PENDING_APPROVAL,
+    generate_workflow_actions,
 )
 
 
-def test_backend_lifecycle():
+def test_backend_lifecycle(seeded_database):
     """
-    Validate that the major Adensa Digital backend layers
-    are connected correctly.
+    Validate that the backend layers stay connected end to end
+    on an isolated temporary database.
 
-    This test is read-only.
-    It does not approve, execute, or modify any records.
+    The test builds a deterministic dataset and runs the real
+    recovery generator, decision engine and workflow engine
+    across the detect → options → recommendation → action chain.
     """
 
-    connection = get_connection()
+    connection = seeded_database
 
     try:
         cursor = connection.cursor()
 
         # --------------------------------------------------
-        # 1. Confirm open exceptions exist
+        # 1. Generate recovery options with the real engine
+        # --------------------------------------------------
+        # EXC-900001 is Low severity and receives no options;
+        # EXC-900002 receives three feasible options. The
+        # selection loop below must therefore skip the
+        # zero-recommendation exception.
+
+        generate_recovery_options(connection)
+
+        options_created = cursor.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM recovery_options
+            """
+        ).fetchone()["count"]
+
+        assert options_created > 0
+
+        print(
+            f"✓ Recovery options generated: "
+            f"{options_created}"
+        )
+
+        # --------------------------------------------------
+        # 2. Confirm open exceptions exist
         # --------------------------------------------------
 
         open_exceptions = cursor.execute(
@@ -94,6 +120,22 @@ def test_backend_lifecycle():
         )
 
         # --------------------------------------------------
+        # 3a. Create recovery actions with the real
+        #     workflow engine (bootstrap step 10 path)
+        # --------------------------------------------------
+
+        workflow_summary = generate_workflow_actions(
+            connection,
+        )
+
+        assert workflow_summary["created"] == 1
+
+        print(
+            f"✓ Workflow engine created "
+            f"{workflow_summary['created']} recovery action."
+        )
+
+        # --------------------------------------------------
         # 4. Confirm a recovery action exists
         # --------------------------------------------------
 
@@ -132,6 +174,17 @@ def test_backend_lifecycle():
             action["option_id"]
             == recommended_option_id
         )
+
+        option_exists = cursor.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM recovery_options
+            WHERE option_id = ?
+            """,
+            (recommended_option_id,),
+        ).fetchone()["count"]
+
+        assert option_exists == 1
 
         print(
             f"✓ Action references recommended option: "
