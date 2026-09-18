@@ -11,6 +11,7 @@ fixture; the development database is never touched.
 import pytest
 
 from app import services
+from app.errors import RecoveryWorkflowError
 from app.generate_recovery_options import generate_recovery_options
 from app.repositories import recovery_actions_repo
 
@@ -431,6 +432,63 @@ def test_reject_recovery_missing_action_raises(seeded_database):
                 "ACT-999999",
                 "Service Test",
             )
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# TYPED DOMAIN ERROR BOUNDARY
+# ==================================================
+
+def test_recovery_workflow_error_is_valueerror():
+    """
+    RecoveryWorkflowError must remain a ValueError subclass:
+    every existing caller and test that catches ValueError
+    keeps working unchanged.
+    """
+
+    assert issubclass(RecoveryWorkflowError, ValueError)
+
+
+def test_execute_service_propagates_non_domain_errors(
+    seeded_database,
+    monkeypatch,
+):
+    """
+    A programming or infrastructure error inside the execution
+    engine must NOT be converted into a failure outcome: the
+    service catches only RecoveryWorkflowError, so non-domain
+    exceptions propagate to the presentation layer.
+    """
+
+    connection = seeded_database
+
+    def _simulate_programming_failure(connection, action_id):
+        raise RuntimeError("Simulated programming failure")
+
+    try:
+        _generate_options(connection)
+
+        action = _create_action(connection)
+        _approve(connection, action)
+
+        monkeypatch.setattr(
+            services,
+            "execute_recovery_action",
+            _simulate_programming_failure,
+        )
+
+        with pytest.raises(RuntimeError) as excinfo:
+            services.execute_approved_recovery(
+                connection,
+                action["action_id"],
+                "EXC-900002",
+                "SHP-900002",
+                "2026-09-15",
+            )
+
+        assert "Simulated programming failure" in str(excinfo.value)
 
     finally:
         connection.close()

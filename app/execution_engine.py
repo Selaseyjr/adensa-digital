@@ -5,6 +5,7 @@ from app.config import (
     RECOVERY_EXECUTION_OFFSET_DAYS,
 )
 from app.database import get_connection
+from app.errors import RecoveryWorkflowError
 from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
@@ -86,7 +87,7 @@ def execute_recovery_action(
     )
 
     if action is None:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Action {action_id} not found."
         )
 
@@ -122,7 +123,7 @@ def execute_recovery_action(
     )
 
     if option is None:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Recovery option {action['option_id']} "
             f"not found."
         )
@@ -132,7 +133,7 @@ def execute_recovery_action(
     # --------------------------------------------------
 
     if option["exception_id"] != action["exception_id"]:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Recovery option {action['option_id']} "
             f"does not belong to exception "
             f"{action['exception_id']}."
@@ -148,7 +149,7 @@ def execute_recovery_action(
     )
 
     if exception is None:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Exception {action['exception_id']} "
             f"not found."
         )
@@ -158,7 +159,7 @@ def execute_recovery_action(
     # --------------------------------------------------
 
     if exception["resolution_status"] != "Open":
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Action {action_id} cannot be executed "
             f"because exception "
             f"{action['exception_id']} is already "
@@ -222,7 +223,7 @@ def execute_recovery_action(
     )
 
     if shipment_update.rowcount != 1:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Shipment update failed for "
             f"{exception['shipment_id']}."
         )
@@ -246,7 +247,7 @@ def execute_recovery_action(
     ).fetchone()
 
     if existing_event is not None:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Recovery event {event_id} already exists. "
             f"Action {action_id} may already have been executed."
         )
@@ -292,7 +293,7 @@ def execute_recovery_action(
     )
 
     if action_rows_updated != 1:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Action {action_id} could not be marked "
             f"as Executed."
         )

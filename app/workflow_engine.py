@@ -3,6 +3,7 @@ import logging
 from app.config import SIMULATION_TIMESTAMP
 from app.database import get_connection
 from app.decision_engine import get_recommendation
+from app.errors import RecoveryWorkflowError
 from app.repositories import recovery_actions_repo
 
 logger = logging.getLogger(__name__)
@@ -56,14 +57,14 @@ def validate_transition(current_status, new_status):
     Validate a workflow transition.
 
     Raises:
-        ValueError: If the requested transition is invalid.
+        RecoveryWorkflowError: If the requested transition is invalid.
     """
 
     if not is_valid_transition(
         current_status,
         new_status,
     ):
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Invalid workflow transition: "
             f"{current_status} → {new_status}"
         )
@@ -260,7 +261,7 @@ def approve_action(
 
         Pending Approval → Approved
 
-    Invalid transitions raise ValueError.
+    Invalid transitions raise RecoveryWorkflowError.
     """
 
     cursor = connection.cursor()
@@ -271,7 +272,7 @@ def approve_action(
     )
 
     if action is None:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Action {action_id} not found."
         )
 
@@ -298,13 +299,13 @@ def approve_action(
     ).fetchone()
 
     if exception is None:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Exception for action {action_id} "
             f"was not found."
         )
 
     if exception["resolution_status"] != "Open":
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Action {action_id} cannot be approved "
             f"because its exception is no longer open."
         )
@@ -323,7 +324,7 @@ def approve_action(
     )
 
     if rows_updated != 1:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Approval could not be completed for "
             f"action {action_id}."
         )
@@ -359,7 +360,7 @@ def reject_action(
     approval audit fields temporarily store the workflow
     actor and timestamp.
 
-    Invalid transitions raise ValueError.
+    Invalid transitions raise RecoveryWorkflowError.
     """
 
     action = recovery_actions_repo.get_action_status_and_id(
@@ -368,7 +369,7 @@ def reject_action(
     )
 
     if action is None:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Action {action_id} not found."
         )
 
@@ -395,7 +396,7 @@ def reject_action(
     )
 
     if rows_updated != 1:
-        raise ValueError(
+        raise RecoveryWorkflowError(
             f"Rejection could not be completed for "
             f"action {action_id}."
         )

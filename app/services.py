@@ -31,6 +31,7 @@ Rules:
 """
 
 from app.decision_engine import get_recommendation
+from app.errors import RecoveryWorkflowError
 from app.execution_engine import execute_recovery_action
 from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
@@ -262,7 +263,7 @@ def execute_approved_recovery(
             connection,
             action_id,
         )
-    except Exception as error:
+    except RecoveryWorkflowError as error:
 
         return {
             "success": False,
