@@ -3,6 +3,7 @@ from datetime import datetime
 
 from app.config import SIMULATION_DATE
 from app.database import get_connection
+from app.repositories import recovery_options_repo
 
 logger = logging.getLogger(__name__)
 
@@ -52,43 +53,13 @@ def get_next_option_number(connection):
     Determine the next recovery-option number from the
     existing database records.
 
-    This keeps option IDs deterministic and unique,
-    mirroring the action-ID approach in the workflow
-    engine, so every recovery option carries a stable
-    identity that decisions, actions and execution can
-    reference.
+    Thin wrapper kept for API compatibility; the data
+    access lives in the recovery-options repository.
     """
 
-    cursor = connection.cursor()
-
-    options = cursor.execute(
-        """
-        SELECT option_id
-        FROM recovery_options
-        WHERE option_id LIKE 'OPT-%'
-        """
-    ).fetchall()
-
-    numbers = []
-
-    for option in options:
-
-        option_id = option["option_id"]
-
-        try:
-            number = int(
-                option_id.replace("OPT-", "")
-            )
-
-            numbers.append(number)
-
-        except ValueError:
-            continue
-
-    if not numbers:
-        return 1
-
-    return max(numbers) + 1
+    return recovery_options_repo.get_next_option_number(
+        connection
+    )
 
 
 # --------------------------------------------------

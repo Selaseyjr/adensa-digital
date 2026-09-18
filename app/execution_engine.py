@@ -5,6 +5,8 @@ from app.config import (
     RECOVERY_EXECUTION_OFFSET_DAYS,
 )
 from app.database import get_connection
+from app.repositories import recovery_actions_repo
+from app.repositories import recovery_options_repo
 from app.workflow_engine import (
     APPROVED,
     EXECUTED,
@@ -77,18 +79,10 @@ def execute_recovery_action(
     # 1. GET RECOVERY ACTION
     # --------------------------------------------------
 
-    action = cursor.execute(
-        """
-        SELECT
-            action_id,
-            exception_id,
-            option_id,
-            status
-        FROM recovery_actions
-        WHERE action_id = ?
-        """,
-        (action_id,),
-    ).fetchone()
+    action = recovery_actions_repo.get_action_by_id(
+        connection,
+        action_id,
+    )
 
     if action is None:
         raise ValueError(
@@ -121,21 +115,10 @@ def execute_recovery_action(
     # 3. GET RECOVERY OPTION
     # --------------------------------------------------
 
-    option = cursor.execute(
-        """
-        SELECT
-            option_id,
-            exception_id,
-            transport_mode,
-            carrier_id,
-            estimated_cost,
-            estimated_transit_days,
-            risk_score
-        FROM recovery_options
-        WHERE option_id = ?
-        """,
-        (action["option_id"],),
-    ).fetchone()
+    option = recovery_options_repo.get_option_by_id(
+        connection,
+        action["option_id"],
+    )
 
     if option is None:
         raise ValueError(
@@ -326,24 +309,14 @@ def execute_recovery_action(
     # 11. MARK ACTION AS EXECUTED
     # --------------------------------------------------
 
-    action_update = cursor.execute(
-        """
-        UPDATE recovery_actions
-        SET
-            status = ?,
-            executed_at = ?
-        WHERE action_id = ?
-          AND status = ?
-        """,
-        (
-            EXECUTED,
-            executed_at,
-            action_id,
-            APPROVED,
-        ),
+    action_rows_updated = recovery_actions_repo.mark_action_executed(
+        connection,
+        action_id=action_id,
+        executed_at=executed_at,
+        expected_current_status=APPROVED,
     )
 
-    if action_update.rowcount != 1:
+    if action_rows_updated != 1:
         raise ValueError(
             f"Action {action_id} could not be marked "
             f"as Executed."

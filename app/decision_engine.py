@@ -7,6 +7,7 @@ from app.config import (
     RISK_BENCHMARK,
 )
 from app.database import get_connection
+from app.repositories import recovery_options_repo
 
 logger = logging.getLogger(__name__)
 
@@ -217,23 +218,10 @@ def get_recommendation(connection, exception_id):
     if exception is None:
         return None
 
-    options = cursor.execute(
-        """
-        SELECT
-            option_id,
-            exception_id,
-            transport_mode,
-            carrier_id,
-            estimated_cost,
-            estimated_transit_days,
-            risk_score,
-            feasible
-        FROM recovery_options
-        WHERE exception_id = ?
-          AND feasible = 1
-        """,
-        (exception_id,),
-    ).fetchall()
+    options = recovery_options_repo.get_feasible_options_for_exception(
+        connection,
+        exception_id,
+    )
 
     if not options:
         return {

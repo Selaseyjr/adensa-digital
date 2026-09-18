@@ -1,0 +1,489 @@
+"""
+Focused tests for the recovery repository layer.
+
+These tests verify data access only. Business rules remain
+owned by the engines and are exercised by the engine and
+lifecycle tests. The seeded_database fixture provides an
+isolated temporary database; the development database is
+never touched.
+"""
+
+from app.generate_recovery_options import generate_recovery_options
+from app.repositories import recovery_actions_repo
+from app.repositories import recovery_options_repo
+
+
+# ==================================================
+# RECOVERY OPTIONS REPOSITORY
+# ==================================================
+
+def test_get_feasible_options_for_exception(seeded_database):
+    """
+    The repository returns the feasible options of an
+    exception with their columns intact.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        modes = {option["transport_mode"] for option in options}
+
+        assert modes == {"Air", "Road", "Rail"}
+        assert all(option["feasible"] == 1 for option in options)
+
+        for option in options:
+            assert option["exception_id"] == "EXC-900002"
+            assert option["option_id"].startswith("OPT-")
+
+    finally:
+        connection.close()
+
+
+def test_get_feasible_options_excludes_low_severity_exception(seeded_database):
+    """
+    The Low-severity exception has no recovery options, so
+    the repository returns an empty list for it.
+    """
+
+    connection = seeded_database
+
+    try:
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900001",
+        )
+
+        assert options == []
+
+    finally:
+        connection.close()
+
+
+def test_get_option_by_id(seeded_database):
+    """
+    A specific option is retrievable by option_id and
+    belongs to the expected exception.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        assert len(options) == 3
+
+        first_option = options[0]
+
+        option = recovery_options_repo.get_option_by_id(
+            connection,
+            first_option["option_id"],
+        )
+
+        assert option is not None
+        assert option["option_id"] == first_option["option_id"]
+        assert option["exception_id"] == "EXC-900002"
+        assert option["transport_mode"] == first_option["transport_mode"]
+
+    finally:
+        connection.close()
+
+
+def test_get_option_by_id_returns_none_for_missing_option(seeded_database):
+    """
+    An unknown option_id yields None instead of an error.
+    """
+
+    connection = seeded_database
+
+    try:
+        option = recovery_options_repo.get_option_by_id(
+            connection,
+            "OPT-999999",
+        )
+
+        assert option is None
+
+    finally:
+        connection.close()
+
+
+def test_get_next_option_number(seeded_database):
+    """
+    The next option number continues after existing
+    OPT-% identifiers.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        existing_numbers = [
+            int(option["option_id"].replace("OPT-", ""))
+            for option in options
+        ]
+
+        next_number = recovery_options_repo.get_next_option_number(
+            connection
+        )
+
+        assert next_number == max(existing_numbers) + 1
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# RECOVERY ACTIONS REPOSITORY
+# ==================================================
+
+def _insert_test_action(
+    connection,
+    action_id,
+    option_id=None,
+    status="Pending Approval",
+):
+    """Insert one action row for repository-level tests."""
+
+    recovery_actions_repo.insert_recovery_action(
+        connection,
+        action_id=action_id,
+        exception_id="EXC-900002",
+        option_id=option_id,
+        action_type="Recovery",
+        description="Repository test action.",
+        status=status,
+    )
+
+
+def test_insert_and_get_action_by_id(seeded_database):
+    """
+    A created action is retrievable by action_id with its
+    option_id association intact.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        option_id = options[0]["option_id"]
+
+        _insert_test_action(
+            connection,
+            "ACT-900001",
+            option_id=option_id,
+        )
+
+        connection.commit()
+
+        action = recovery_actions_repo.get_action_by_id(
+            connection,
+            "ACT-900001",
+        )
+
+        assert action is not None
+        assert action["exception_id"] == "EXC-900002"
+        assert action["option_id"] == option_id
+        assert action["status"] == "Pending Approval"
+
+    finally:
+        connection.close()
+
+
+def test_get_active_action_for_exception(seeded_database):
+    """
+    The idempotency lookup finds an active action for its
+    exception.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        _insert_test_action(
+            connection,
+            "ACT-900002",
+            option_id=options[0]["option_id"],
+        )
+
+        connection.commit()
+
+        active = recovery_actions_repo.get_active_action_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        assert active is not None
+        assert active["action_id"] == "ACT-900002"
+
+        active = recovery_actions_repo.get_active_action_for_exception(
+            connection,
+            "EXC-900001",
+        )
+
+        assert active is None
+
+    finally:
+        connection.close()
+
+
+def test_get_latest_action_for_exception(seeded_database):
+    """
+    The UI-style latest lookup returns the highest
+    action_id for an exception.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        option_id = options[0]["option_id"]
+
+        _insert_test_action(
+            connection,
+            "ACT-900003",
+            option_id=option_id,
+        )
+        _insert_test_action(
+            connection,
+            "ACT-900004",
+            option_id=option_id,
+        )
+
+        connection.commit()
+
+        latest = recovery_actions_repo.get_latest_action_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        assert latest is not None
+        assert latest["action_id"] == "ACT-900004"
+        assert latest["action_type"] == "Recovery"
+
+    finally:
+        connection.close()
+
+
+def test_update_action_status_transition(seeded_database):
+    """
+    The approval-style status update writes the actor and
+    timestamp and only applies to the expected previous
+    status.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        _insert_test_action(
+            connection,
+            "ACT-900005",
+            option_id=options[0]["option_id"],
+        )
+
+        connection.commit()
+
+        rows_updated = recovery_actions_repo.update_action_status(
+            connection,
+            action_id="ACT-900005",
+            new_status="Approved",
+            actor="Repo Test",
+            timestamp="2026-09-10 12:00:00",
+            expected_current_status="Pending Approval",
+        )
+
+        connection.commit()
+
+        assert rows_updated == 1
+
+        action = recovery_actions_repo.get_action_by_id(
+            connection,
+            "ACT-900005",
+        )
+
+        assert action["status"] == "Approved"
+
+        detail = connection.execute(
+            """
+            SELECT approved_by, approved_at
+            FROM recovery_actions
+            WHERE action_id = 'ACT-900005'
+            """
+        ).fetchone()
+
+        assert detail["approved_by"] == "Repo Test"
+        assert detail["approved_at"] == "2026-09-10 12:00:00"
+
+        stale = recovery_actions_repo.update_action_status(
+            connection,
+            action_id="ACT-900005",
+            new_status="Approved",
+            actor="Repo Test",
+            timestamp="2026-09-10 12:00:00",
+            expected_current_status="Pending Approval",
+        )
+
+        assert stale == 0
+
+    finally:
+        connection.close()
+
+
+def test_mark_action_executed(seeded_database):
+    """
+    The execution-style update sets Executed with a
+    timestamp and only applies from the expected
+    previous status.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        option_id = options[0]["option_id"]
+
+        _insert_test_action(
+            connection,
+            "ACT-900006",
+            option_id=option_id,
+        )
+
+        connection.commit()
+
+        rows_updated = recovery_actions_repo.mark_action_executed(
+            connection,
+            action_id="ACT-900006",
+            executed_at="2026-09-13 12:00:00",
+            expected_current_status="Approved",
+        )
+
+        assert rows_updated == 0
+
+        recovery_actions_repo.update_action_status(
+            connection,
+            action_id="ACT-900006",
+            new_status="Approved",
+            actor="Repo Test",
+            timestamp="2026-09-10 12:00:00",
+            expected_current_status="Pending Approval",
+        )
+
+        connection.commit()
+
+        rows_updated = recovery_actions_repo.mark_action_executed(
+            connection,
+            action_id="ACT-900006",
+            executed_at="2026-09-13 12:00:00",
+            expected_current_status="Approved",
+        )
+
+        assert rows_updated == 1
+
+        action = recovery_actions_repo.get_action_by_id(
+            connection,
+            "ACT-900006",
+        )
+
+        assert action["status"] == "Executed"
+
+        detail = connection.execute(
+            """
+            SELECT executed_at
+            FROM recovery_actions
+            WHERE action_id = 'ACT-900006'
+            """
+        ).fetchone()
+
+        assert detail["executed_at"] == "2026-09-13 12:00:00"
+
+    finally:
+        connection.close()
+
+
+def test_count_actions_by_status(seeded_database):
+    """
+    The KPI count reflects inserted action statuses.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        option_id = options[0]["option_id"]
+
+        before = recovery_actions_repo.count_actions_by_status(
+            connection,
+            status="Pending Approval",
+        )
+
+        _insert_test_action(
+            connection,
+            "ACT-900007",
+            option_id=option_id,
+        )
+
+        connection.commit()
+
+        after = recovery_actions_repo.count_actions_by_status(
+            connection,
+            status="Pending Approval",
+        )
+
+        assert after == before + 1
+
+    finally:
+        connection.close()

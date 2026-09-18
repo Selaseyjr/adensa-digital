@@ -3,6 +3,7 @@ import logging
 from app.config import SIMULATION_TIMESTAMP
 from app.database import get_connection
 from app.decision_engine import get_recommendation
+from app.repositories import recovery_actions_repo
 
 logger = logging.getLogger(__name__)
 
@@ -77,40 +78,13 @@ def get_next_action_number(connection):
     Determine the next recovery-action number from the
     existing database records.
 
-    This prevents action IDs from restarting at ACT-000001
-    when new workflow actions are generated later.
+    Thin wrapper kept for API compatibility; the data
+    access lives in the recovery-actions repository.
     """
 
-    cursor = connection.cursor()
-
-    actions = cursor.execute(
-        """
-        SELECT action_id
-        FROM recovery_actions
-        WHERE action_id LIKE 'ACT-%'
-        """
-    ).fetchall()
-
-    numbers = []
-
-    for action in actions:
-
-        action_id = action["action_id"]
-
-        try:
-            number = int(
-                action_id.replace("ACT-", "")
-            )
-
-            numbers.append(number)
-
-        except ValueError:
-            continue
-
-    if not numbers:
-        return 1
-
-    return max(numbers) + 1
+    return recovery_actions_repo.get_next_action_number(
+        connection
+    )
 
 
 # ==================================================
@@ -135,8 +109,6 @@ def create_recovery_action(
     if recommendation is None:
         return False
 
-    cursor = connection.cursor()
-
     # --------------------------------------------------
     # IDEMPOTENCY CHECK
     # --------------------------------------------------
@@ -145,22 +117,10 @@ def create_recovery_action(
     # recovery actions at the same time.
     #
 
-    existing_action = cursor.execute(
-        """
-        SELECT
-            action_id,
-            status
-        FROM recovery_actions
-        WHERE exception_id = ?
-          AND status IN (
-              'Pending Approval',
-              'Approved',
-              'Executed'
-          )
-        LIMIT 1
-        """,
-        (result["exception_id"],),
-    ).fetchone()
+    existing_action = recovery_actions_repo.get_active_action_for_exception(
+        connection,
+        result["exception_id"],
+    )
 
     if existing_action:
         return False
@@ -179,26 +139,14 @@ def create_recovery_action(
         f"{recommendation['risk_score']}."
     )
 
-    cursor.execute(
-        """
-        INSERT INTO recovery_actions (
-            action_id,
-            exception_id,
-            option_id,
-            action_type,
-            description,
-            status
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            action_id,
-            result["exception_id"],
-            recommendation["option_id"],
-            "Recovery",
-            description,
-            PENDING_APPROVAL,
-        ),
+    recovery_actions_repo.insert_recovery_action(
+        connection,
+        action_id=action_id,
+        exception_id=result["exception_id"],
+        option_id=recommendation["option_id"],
+        action_type="Recovery",
+        description=description,
+        status=PENDING_APPROVAL,
     )
 
     return True
@@ -317,17 +265,10 @@ def approve_action(
 
     cursor = connection.cursor()
 
-    action = cursor.execute(
-        """
-        SELECT
-            action_id,
-            exception_id,
-            status
-        FROM recovery_actions
-        WHERE action_id = ?
-        """,
-        (action_id,),
-    ).fetchone()
+    action = recovery_actions_repo.get_action_by_id(
+        connection,
+        action_id,
+    )
 
     if action is None:
         raise ValueError(
@@ -372,26 +313,16 @@ def approve_action(
     # UPDATE ACTION
     # --------------------------------------------------
 
-    cursor.execute(
-        """
-        UPDATE recovery_actions
-        SET
-            status = ?,
-            approved_by = ?,
-            approved_at = ?
-        WHERE action_id = ?
-          AND status = ?
-        """,
-        (
-            APPROVED,
-            approved_by,
-            SIMULATION_TIMESTAMP,
-            action_id,
-            PENDING_APPROVAL,
-        ),
+    rows_updated = recovery_actions_repo.update_action_status(
+        connection,
+        action_id=action_id,
+        new_status=APPROVED,
+        actor=approved_by,
+        timestamp=SIMULATION_TIMESTAMP,
+        expected_current_status=PENDING_APPROVAL,
     )
 
-    if cursor.rowcount != 1:
+    if rows_updated != 1:
         raise ValueError(
             f"Approval could not be completed for "
             f"action {action_id}."
@@ -431,18 +362,10 @@ def reject_action(
     Invalid transitions raise ValueError.
     """
 
-    cursor = connection.cursor()
-
-    action = cursor.execute(
-        """
-        SELECT
-            action_id,
-            status
-        FROM recovery_actions
-        WHERE action_id = ?
-        """,
-        (action_id,),
-    ).fetchone()
+    action = recovery_actions_repo.get_action_status_and_id(
+        connection,
+        action_id,
+    )
 
     if action is None:
         raise ValueError(
@@ -462,26 +385,16 @@ def reject_action(
     # UPDATE ACTION
     # --------------------------------------------------
 
-    cursor.execute(
-        """
-        UPDATE recovery_actions
-        SET
-            status = ?,
-            approved_by = ?,
-            approved_at = ?
-        WHERE action_id = ?
-          AND status = ?
-        """,
-        (
-            REJECTED,
-            rejected_by,
-            SIMULATION_TIMESTAMP,
-            action_id,
-            PENDING_APPROVAL,
-        ),
+    rows_updated = recovery_actions_repo.update_action_status(
+        connection,
+        action_id=action_id,
+        new_status=REJECTED,
+        actor=rejected_by,
+        timestamp=SIMULATION_TIMESTAMP,
+        expected_current_status=PENDING_APPROVAL,
     )
 
-    if cursor.rowcount != 1:
+    if rows_updated != 1:
         raise ValueError(
             f"Rejection could not be completed for "
             f"action {action_id}."
@@ -506,21 +419,9 @@ def show_workflow_summary(connection):
     Display the current recovery-action status distribution.
     """
 
-    cursor = connection.cursor()
-
-    logger.info("\nWorkflow Status")
-    logger.info("=" * 50)
-
-    statuses = cursor.execute(
-        """
-        SELECT
-            status,
-            COUNT(*) AS count
-        FROM recovery_actions
-        GROUP BY status
-        ORDER BY count DESC
-        """
-    ).fetchall()
+    statuses = recovery_actions_repo.get_status_counts(
+        connection
+    )
 
     if not statuses:
         logger.info(
@@ -548,25 +449,10 @@ def show_sample_actions(
     Display a small sample of recovery actions.
     """
 
-    cursor = connection.cursor()
-
-    actions = cursor.execute(
-        """
-        SELECT
-            action_id,
-            exception_id,
-            option_id,
-            action_type,
-            description,
-            status,
-            approved_by,
-            approved_at
-        FROM recovery_actions
-        ORDER BY action_id
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
+    actions = recovery_actions_repo.list_actions(
+        connection,
+        limit=limit,
+    )
 
     logger.info("\nSample Recovery Actions")
     logger.info("=" * 50)

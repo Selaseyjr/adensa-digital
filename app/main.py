@@ -2,6 +2,7 @@ import streamlit as st
 
 from app.database import get_connection
 from app.decision_engine import get_recommendation
+from app.repositories import recovery_actions_repo
 from app.workflow_engine import (
     approve_action,
     reject_action,
@@ -111,15 +112,10 @@ def main():
 
         critical_exceptions = cursor.fetchone()[0]
 
-        cursor.execute(
-            """
-            SELECT COUNT(*)
-            FROM recovery_actions
-            WHERE status = 'Pending Approval'
-            """
+        pending_approvals = recovery_actions_repo.count_actions_by_status(
+            connection,
+            status="Pending Approval",
         )
-
-        pending_approvals = cursor.fetchone()[0]
 
         col1, col2, col3 = st.columns(3)
 
@@ -522,25 +518,10 @@ def main():
 
             st.header("Workflow Action")
 
-            cursor.execute(
-                """
-                SELECT
-                    action_id,
-                    option_id,
-                    action_type,
-                    status,
-                    approved_by,
-                    approved_at,
-                    executed_at
-                FROM recovery_actions
-                WHERE exception_id = ?
-                ORDER BY action_id DESC
-                LIMIT 1
-                """,
-                (selected_exception_id,),
+            action = recovery_actions_repo.get_latest_action_for_exception(
+                connection,
+                selected_exception_id,
             )
-
-            action = cursor.fetchone()
 
             if action:
 
