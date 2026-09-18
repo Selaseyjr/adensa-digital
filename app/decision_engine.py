@@ -7,6 +7,7 @@ from app.config import (
     RISK_BENCHMARK,
 )
 from app.database import get_connection
+from app.repositories import exceptions_repo
 from app.repositories import recovery_options_repo
 
 logger = logging.getLogger(__name__)
@@ -198,22 +199,10 @@ def get_recommendation(connection, exception_id):
     and return the highest-scoring recommendation.
     """
 
-    cursor = connection.cursor()
-
-    exception = cursor.execute(
-        """
-        SELECT
-            e.exception_id,
-            e.shipment_id,
-            e.severity,
-            s.priority
-        FROM exceptions e
-        JOIN shipments s
-            ON e.shipment_id = s.shipment_id
-        WHERE e.exception_id = ?
-        """,
-        (exception_id,),
-    ).fetchone()
+    exception = exceptions_repo.get_exception_operational_context(
+        connection,
+        exception_id,
+    )
 
     if exception is None:
         return None

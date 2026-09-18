@@ -3,6 +3,7 @@ from datetime import datetime
 
 from app.config import SIMULATION_DATE
 from app.database import get_connection
+from app.repositories import exceptions_repo
 from app.repositories import recovery_options_repo
 
 logger = logging.getLogger(__name__)
@@ -110,39 +111,9 @@ def generate_recovery_options(connection):
     # LOAD OPEN EXCEPTIONS
     # --------------------------------------------------
 
-    exceptions = cursor.execute(
-        """
-        SELECT
-            e.exception_id,
-            e.shipment_id,
-            e.exception_type,
-            e.severity,
-            e.description,
-
-            s.origin,
-            s.destination,
-            s.transport_mode,
-            s.quantity,
-            s.weight_kg,
-            s.distance_km,
-            s.priority,
-            s.estimated_arrival,
-
-            o.required_delivery_date
-
-        FROM exceptions e
-
-        JOIN shipments s
-            ON e.shipment_id = s.shipment_id
-
-        JOIN orders o
-            ON s.order_id = o.order_id
-
-        WHERE e.resolution_status = 'Open'
-
-        ORDER BY e.exception_id
-        """
-    ).fetchall()
+    exceptions = exceptions_repo.get_open_exception_contexts(
+        connection
+    )
 
     # --------------------------------------------------
     # LOAD CARRIERS

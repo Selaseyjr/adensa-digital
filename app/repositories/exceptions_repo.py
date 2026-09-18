@@ -151,6 +151,113 @@ def get_exception_resolution_status(
 
 
 # ==================================================
+# OPERATIONAL CONTEXT READS (shared by engines)
+# ==================================================
+
+def get_exception_operational_context(
+    connection,
+    exception_id,
+):
+    """
+    Return the exception's operational context row with its
+    shipment and order fields, or None when the exception
+    does not exist.
+
+    Consolidates the exception → shipment → order context
+    reads previously duplicated by the decision engine and
+    the execution engine. Missing-record handling stays with
+    the calling engine.
+    """
+
+    cursor = connection.cursor()
+
+    exception = cursor.execute(
+        """
+        SELECT
+            e.exception_id,
+            e.shipment_id,
+            e.exception_type,
+            e.severity,
+            e.resolution_status,
+
+            s.order_id,
+            s.transport_mode,
+            s.carrier_id,
+            s.planned_departure,
+            s.estimated_arrival,
+            s.status AS shipment_status,
+
+            o.required_delivery_date,
+
+            s.priority
+
+        FROM exceptions e
+
+        JOIN shipments s
+            ON e.shipment_id = s.shipment_id
+
+        JOIN orders o
+            ON s.order_id = o.order_id
+
+        WHERE e.exception_id = ?
+        """,
+        (exception_id,),
+    ).fetchone()
+
+    return exception
+
+
+def get_open_exception_contexts(connection):
+    """
+    Return the operational context of all open exceptions,
+    ordered by exception_id.
+
+    Moved verbatim from the generator's open-exception
+    context read in app/generate_recovery_options.py.
+    Severity filtering and option generation stay with the
+    generator.
+    """
+
+    cursor = connection.cursor()
+
+    exceptions = cursor.execute(
+        """
+        SELECT
+            e.exception_id,
+            e.shipment_id,
+            e.exception_type,
+            e.severity,
+            e.description,
+
+            s.origin,
+            s.destination,
+            s.transport_mode,
+            s.quantity,
+            s.weight_kg,
+            s.distance_km,
+            s.priority,
+            s.estimated_arrival,
+
+            o.required_delivery_date
+
+        FROM exceptions e
+
+        JOIN shipments s
+            ON e.shipment_id = s.shipment_id
+
+        JOIN orders o
+            ON s.order_id = o.order_id
+
+        WHERE e.resolution_status = 'Open'
+
+        ORDER BY e.exception_id
+        """
+    ).fetchall()
+
+    return exceptions
+
+
+# ==================================================
 # WRITES
 # ==================================================
 

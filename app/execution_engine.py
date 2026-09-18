@@ -5,6 +5,7 @@ from app.config import (
     RECOVERY_EXECUTION_OFFSET_DAYS,
 )
 from app.database import get_connection
+from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
 from app.workflow_engine import (
@@ -141,36 +142,10 @@ def execute_recovery_action(
     # 5. GET EXCEPTION + SHIPMENT + ORDER
     # --------------------------------------------------
 
-    exception = cursor.execute(
-        """
-        SELECT
-            e.exception_id,
-            e.shipment_id,
-            e.exception_type,
-            e.severity,
-            e.resolution_status,
-
-            s.order_id,
-            s.transport_mode,
-            s.carrier_id,
-            s.planned_departure,
-            s.estimated_arrival,
-            s.status AS shipment_status,
-
-            o.required_delivery_date
-
-        FROM exceptions e
-
-        JOIN shipments s
-            ON e.shipment_id = s.shipment_id
-
-        JOIN orders o
-            ON s.order_id = o.order_id
-
-        WHERE e.exception_id = ?
-        """,
-        (action["exception_id"],),
-    ).fetchone()
+    exception = exceptions_repo.get_exception_operational_context(
+        connection,
+        action["exception_id"],
+    )
 
     if exception is None:
         raise ValueError(

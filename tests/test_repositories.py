@@ -848,3 +848,110 @@ def test_get_latest_recovery_event_id(seeded_database):
 
     finally:
         connection.close()
+
+
+# ==================================================
+# EXCEPTION OPERATIONAL CONTEXT (SHARED BY ENGINES)
+# ==================================================
+
+def test_get_exception_operational_context(seeded_database):
+    """
+    The shared context read returns the exception with its
+    shipment and order fields under the approved contract.
+    """
+
+    connection = seeded_database
+
+    try:
+        context = exceptions_repo.get_exception_operational_context(
+            connection,
+            "EXC-900002",
+        )
+
+        assert context is not None
+        assert context["exception_id"] == "EXC-900002"
+        assert context["shipment_id"] == "SHP-900002"
+        assert context["priority"] == "Medium"
+        assert context["resolution_status"] == "Open"
+        assert context["planned_departure"] == "2026-09-12"
+        assert context["required_delivery_date"] == "2026-09-15"
+        assert context["shipment_status"] == "In Transit"
+        assert context["transport_mode"] == "Sea"
+        assert context["order_id"] == "ORD-900001"
+
+    finally:
+        connection.close()
+
+
+def test_get_exception_operational_context_missing(seeded_database):
+    """
+    An unknown exception ID yields None; the engines keep
+    their own missing-record handling.
+    """
+
+    connection = seeded_database
+
+    try:
+        context = exceptions_repo.get_exception_operational_context(
+            connection,
+            "EXC-999999",
+        )
+
+        assert context is None
+
+    finally:
+        connection.close()
+
+
+def test_get_open_exception_contexts(seeded_database):
+    """
+    The open-context collection returns open exceptions in
+    exception_id order and excludes resolved records.
+    """
+
+    connection = seeded_database
+
+    try:
+        contexts = exceptions_repo.get_open_exception_contexts(
+            connection
+        )
+
+        # ORDER BY e.exception_id: lexicographic order.
+        assert [
+            row["exception_id"] for row in contexts
+        ] == ["EXC-900001", "EXC-900002"]
+
+        high = contexts[1]
+
+        assert high["transport_mode"] == "Sea"
+        assert high["required_delivery_date"] == "2026-09-15"
+
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900105",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Medium",
+                    "2026-09-10 12:00:00",
+                    "Resolved context test exception",
+                    100,
+                    "Resolved",
+                    "2026-09-11 12:00:00",
+                ),
+            ],
+        )
+
+        connection.commit()
+
+        contexts = exceptions_repo.get_open_exception_contexts(
+            connection
+        )
+
+        assert [
+            row["exception_id"] for row in contexts
+        ] == ["EXC-900001", "EXC-900002"]
+
+    finally:
+        connection.close()
