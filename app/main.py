@@ -61,6 +61,9 @@ def main():
     if "scroll_to_outcome" not in st.session_state:
         st.session_state.scroll_to_outcome = False
 
+    if "last_refresh_result" not in st.session_state:
+        st.session_state.last_refresh_result = None
+
     # --------------------------------------------------
     # DATABASE CONNECTION
     # --------------------------------------------------
@@ -68,6 +71,46 @@ def main():
     connection = get_connection()
 
     try:
+
+        # --------------------------------------------------
+        # OPERATIONS SIDEBAR
+        # --------------------------------------------------
+
+        with st.sidebar:
+
+            st.header("Operations")
+
+            if st.button(
+                "Refresh Operations Pipeline",
+                key="refresh_operations_pipeline",
+            ):
+
+                with st.spinner(
+                    "Running detect → options → actions..."
+                ):
+
+                    st.session_state.last_refresh_result = (
+                        services.run_operational_refresh(
+                            connection,
+                        )
+                    )
+
+                st.rerun()
+
+            if st.session_state.last_refresh_result:
+
+                refresh_result = (
+                    st.session_state.last_refresh_result
+                )
+
+                st.success(
+                    f"Detected {refresh_result['new_exceptions']} "
+                    f"new exceptions · "
+                    f"{refresh_result['new_options']} "
+                    f"new recovery options · "
+                    f"{refresh_result['new_actions']} "
+                    f"new workflow actions"
+                )
 
         # --------------------------------------------------
         # HEADER

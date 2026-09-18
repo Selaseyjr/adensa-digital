@@ -30,12 +30,14 @@ Rules:
 - Plain functions only: no classes, no frameworks.
 """
 
+from app.detect_exceptions import detect_exceptions
 from app.decision_engine import get_recommendation
 from app.errors import (
     ActionNotFoundError,
     RecoveryWorkflowError,
 )
 from app.execution_engine import execute_recovery_action
+from app.generate_recovery_options import generate_recovery_options
 from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
@@ -43,6 +45,7 @@ from app.repositories import shipments_repo
 from app.workflow_engine import (
     approve_action,
     reject_action,
+    generate_workflow_actions,
 )
 
 
@@ -344,4 +347,77 @@ def execute_approved_recovery(
         ),
         "required_delivery": required_delivery,
         "exception_status": exception_status,
+    }
+
+
+# ==================================================
+# OPERATIONAL PIPELINE REFRESH
+# ==================================================
+
+def run_operational_refresh(connection):
+    """
+    Re-run the operational processing pipeline:
+
+        detect exceptions
+            ↓
+        generate recovery options
+            ↓
+        generate workflow actions
+
+    Each stage is the existing production function with its
+    own idempotency guard and transaction boundary; this
+    service only sequences them and aggregates the results.
+    No business rules and no SQL live here, and unexpected
+    errors from any stage propagate to the caller.
+
+    Detection and option generation return no summary, so
+    the newly created work is measured as before/after
+    deltas through the existing repository counts. The
+    action-generation summary is returned by the workflow
+    engine and passed through unchanged.
+    """
+
+    exceptions_before = exceptions_repo.count_exceptions(
+        connection,
+    )
+
+    options_before = (
+        recovery_options_repo.get_next_option_number(
+            connection,
+        )
+        - 1
+    )
+
+    detect_exceptions(connection)
+
+    generate_recovery_options(connection)
+
+    actions_summary = generate_workflow_actions(connection)
+
+    exceptions_after = exceptions_repo.count_exceptions(
+        connection,
+    )
+
+    options_after = (
+        recovery_options_repo.get_next_option_number(
+            connection,
+        )
+        - 1
+    )
+
+    return {
+        "new_exceptions": (
+            exceptions_after
+            - exceptions_before
+        ),
+        "new_options": (
+            options_after
+            - options_before
+        ),
+        "actions_evaluated": actions_summary["evaluated"],
+        "new_actions": actions_summary["created"],
+        "actions_without_recommendation": actions_summary[
+            "without_recommendation"
+        ],
+        "actions_skipped": actions_summary["skipped"],
     }

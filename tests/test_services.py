@@ -480,3 +480,150 @@ def test_execute_service_propagates_non_domain_errors(
 
     finally:
         connection.close()
+
+
+# ==================================================
+# OPERATIONAL PIPELINE REFRESH
+# ==================================================
+
+def test_run_operational_refresh_is_steady_state(seeded_database):
+    """
+    Re-running the pipeline on an already-processed database
+    creates no duplicate operational records: detection is
+    suppressed, the option generator's duplicate guard holds
+    and the existing action is skipped. The aggregated result
+    reports zero new work.
+    """
+
+    connection = seeded_database
+
+    try:
+        _create_action(connection)
+
+        counts_before = {
+            table: connection.execute(
+                f"SELECT COUNT(*) FROM {table}"
+            ).fetchone()[0]
+            for table in (
+                "exceptions",
+                "recovery_options",
+                "recovery_actions",
+            )
+        }
+
+        result = services.run_operational_refresh(connection)
+
+        counts_after = {
+            table: connection.execute(
+                f"SELECT COUNT(*) FROM {table}"
+            ).fetchone()[0]
+            for table in (
+                "exceptions",
+                "recovery_options",
+                "recovery_actions",
+            )
+        }
+
+        assert counts_after == counts_before
+
+        assert result["new_exceptions"] == 0
+        assert result["new_options"] == 0
+        assert result["new_actions"] == 0
+        assert result["actions_evaluated"] == 2
+        assert result["actions_without_recommendation"] == 1
+        assert result["actions_skipped"] == 1
+
+    finally:
+        connection.close()
+
+
+def test_run_operational_refresh_orchestrates_stages_in_order(
+    temp_database,
+    monkeypatch,
+):
+    """
+    The refresh sequences the three pipeline stages in the
+    intended order and aggregates their observable results:
+    measured creation deltas plus the workflow engine's own
+    summary, passed through unchanged.
+    """
+
+    connection = temp_database
+
+    calls = []
+
+    monkeypatch.setattr(
+        services,
+        "detect_exceptions",
+        lambda conn: calls.append("detect"),
+    )
+
+    monkeypatch.setattr(
+        services,
+        "generate_recovery_options",
+        lambda conn: calls.append("options"),
+    )
+
+    def _fake_action_generation(connection):
+        calls.append("actions")
+
+        return {
+            "evaluated": 7,
+            "created": 3,
+            "without_recommendation": 4,
+            "skipped": 0,
+        }
+
+    monkeypatch.setattr(
+        services,
+        "generate_workflow_actions",
+        _fake_action_generation,
+    )
+
+    try:
+        result = services.run_operational_refresh(connection)
+
+        assert calls == ["detect", "options", "actions"]
+
+        assert result == {
+            "new_exceptions": 0,
+            "new_options": 0,
+            "actions_evaluated": 7,
+            "new_actions": 3,
+            "actions_without_recommendation": 4,
+            "actions_skipped": 0,
+        }
+
+    finally:
+        connection.close()
+
+
+def test_run_operational_refresh_propagates_stage_failures(
+    temp_database,
+    monkeypatch,
+):
+    """
+    An unexpected programming error inside any pipeline stage
+    must propagate: the refresh service does not catch
+    exceptions on behalf of the caller.
+    """
+
+    connection = temp_database
+
+    def _simulate_programming_failure(connection):
+        raise RuntimeError("Simulated detection failure")
+
+    monkeypatch.setattr(
+        services,
+        "detect_exceptions",
+        _simulate_programming_failure,
+    )
+
+    try:
+        with pytest.raises(RuntimeError) as excinfo:
+            services.run_operational_refresh(connection)
+
+        assert "Simulated detection failure" in str(excinfo.value)
+
+    finally:
+        connection.close()
