@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Compile checks & tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Compile checks (compileall)
+        run: python -m compileall -q app/ streamlit_app.py tests/
+
+      # The pytest suite includes tests/test_database.py, which connects to
+      # data/adensa.db at collection time. That file is git-ignored (*.db),
+      # so CI bootstraps it from scratch with the project's canonical,
+      # idempotent initializer: schema + synthetic operational dataset.
+      # (Invoked inline to keep this change limited to CI configuration.)
+      - name: Initialize development database
+        run: |
+          python - <<'PY'
+          import logging
+
+          from app.bootstrap import initialize_adensa
+
+          logging.basicConfig(level=logging.INFO)
+          initialize_adensa()
+          PY
+
+      - name: Run test suite
+        run: python -m pytest
