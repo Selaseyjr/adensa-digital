@@ -9,8 +9,10 @@ never touched.
 """
 
 from app.generate_recovery_options import generate_recovery_options
+from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
+from app.repositories import shipments_repo
 
 
 # ==================================================
@@ -484,6 +486,365 @@ def test_count_actions_by_status(seeded_database):
         )
 
         assert after == before + 1
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# EXCEPTIONS REPOSITORY
+# ==================================================
+
+def test_count_exceptions(seeded_database):
+    """
+    The repository counts all exception records and the
+    count follows inserts.
+    """
+
+    connection = seeded_database
+
+    try:
+        before = exceptions_repo.count_exceptions(connection)
+
+        assert before == 2
+
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900101",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Medium",
+                    "2026-09-10 12:00:00",
+                    "Test exception",
+                    100,
+                    "Open",
+                    None,
+                ),
+            ],
+        )
+
+        connection.commit()
+
+        assert exceptions_repo.count_exceptions(connection) == before + 1
+
+    finally:
+        connection.close()
+
+
+def test_count_open_exceptions(seeded_database):
+    """
+    Both seeded exceptions are open, so the count is two
+    and excludes resolved records.
+    """
+
+    connection = seeded_database
+
+    try:
+        assert exceptions_repo.count_open_exceptions(connection) == 2
+
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900102",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Medium",
+                    "2026-09-10 12:00:00",
+                    "Resolved test exception",
+                    100,
+                    "Resolved",
+                    "2026-09-11 12:00:00",
+                ),
+            ],
+        )
+
+        connection.commit()
+
+        assert exceptions_repo.count_open_exceptions(connection) == 2
+
+    finally:
+        connection.close()
+
+
+def test_count_open_critical_exceptions(seeded_database):
+    """
+    The severity filter returns only open Critical
+    exceptions.
+    """
+
+    connection = seeded_database
+
+    try:
+        assert exceptions_repo.count_open_critical_exceptions(
+            connection
+        ) == 0
+
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900103",
+                    "SHP-900002",
+                    "Delivery Delay",
+                    "Critical",
+                    "2026-09-10 12:00:00",
+                    "Critical test exception",
+                    9000,
+                    "Open",
+                    None,
+                ),
+            ],
+        )
+
+        connection.commit()
+
+        assert exceptions_repo.count_open_critical_exceptions(
+            connection
+        ) == 1
+
+    finally:
+        connection.close()
+
+
+def test_get_open_exceptions_inbox(seeded_database):
+    """
+    The inbox returns open exceptions with shipment and
+    order context, ordered by severity rank, and excludes
+    resolved records.
+    """
+
+    connection = seeded_database
+
+    try:
+        inbox = exceptions_repo.get_open_exceptions_inbox(
+            connection
+        )
+
+        assert [
+            row["exception_id"] for row in inbox
+        ] == ["EXC-900002", "EXC-900001"]
+
+        high = inbox[0]
+
+        assert high["transport_mode"] == "Sea"
+        assert high["priority"] == "Medium"
+        assert high["required_delivery_date"] == "2026-09-15"
+
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900104",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Medium",
+                    "2026-09-10 12:00:00",
+                    "Resolved test exception",
+                    100,
+                    "Resolved",
+                    "2026-09-11 12:00:00",
+                ),
+            ],
+        )
+
+        connection.commit()
+
+        inbox = exceptions_repo.get_open_exceptions_inbox(
+            connection
+        )
+
+        assert [
+            row["exception_id"] for row in inbox
+        ] == ["EXC-900002", "EXC-900001"]
+
+    finally:
+        connection.close()
+
+
+def test_get_exception_resolution_status(seeded_database):
+    """
+    The status lookup returns the current resolution
+    status and None for a missing exception.
+    """
+
+    connection = seeded_database
+
+    try:
+        row = exceptions_repo.get_exception_resolution_status(
+            connection,
+            "EXC-900002",
+        )
+
+        assert row["resolution_status"] == "Open"
+
+        row = exceptions_repo.get_exception_resolution_status(
+            connection,
+            "EXC-999999",
+        )
+
+        assert row is None
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# SHIPMENTS REPOSITORY
+# ==================================================
+
+def test_get_shipments_with_required_delivery(seeded_database):
+    """
+    The detection read returns shipments ordered by ID
+    with the joined required delivery date.
+    """
+
+    connection = seeded_database
+
+    try:
+        shipments = shipments_repo.get_shipments_with_required_delivery(
+            connection
+        )
+
+        assert [
+            row["shipment_id"] for row in shipments
+        ] == ["SHP-900001", "SHP-900002"]
+
+        assert shipments[0]["required_delivery_date"] == "2026-09-15"
+        assert shipments[0]["estimated_arrival"] == "2026-09-13"
+        assert shipments[1]["estimated_arrival"] == "2026-09-20"
+
+    finally:
+        connection.close()
+
+
+def test_get_shipment_transport_mode_and_carrier(seeded_database):
+    """
+    The transport-mode lookup returns the shipment's mode
+    and carrier, and None for a missing shipment.
+    """
+
+    connection = seeded_database
+
+    try:
+        row = shipments_repo.get_shipment_transport_mode_and_carrier(
+            connection,
+            "SHP-900001",
+        )
+
+        assert row["transport_mode"] == "Road"
+        assert row["carrier_id"] == "CAR-900001"
+
+        row = shipments_repo.get_shipment_transport_mode_and_carrier(
+            connection,
+            "SHP-999999",
+        )
+
+        assert row is None
+
+    finally:
+        connection.close()
+
+
+def test_get_shipment_delivery_state(seeded_database):
+    """
+    The delivery-state lookup returns mode, carrier and
+    estimated arrival, and None for a missing shipment.
+    """
+
+    connection = seeded_database
+
+    try:
+        row = shipments_repo.get_shipment_delivery_state(
+            connection,
+            "SHP-900002",
+        )
+
+        assert row["transport_mode"] == "Sea"
+        assert row["carrier_id"] == "CAR-900001"
+        assert row["estimated_arrival"] == "2026-09-20"
+
+        row = shipments_repo.get_shipment_delivery_state(
+            connection,
+            "SHP-999999",
+        )
+
+        assert row is None
+
+    finally:
+        connection.close()
+
+
+def test_get_latest_recovery_event_id(seeded_database):
+    """
+    The recovery-event lookup returns the newest recovery
+    event for a shipment and None when none exists.
+    """
+
+    connection = seeded_database
+
+    try:
+        assert shipments_repo.get_latest_recovery_event_id(
+            connection,
+            "SHP-900002",
+        ) is None
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO shipment_events (
+                event_id,
+                shipment_id,
+                event_type,
+                event_timestamp,
+                location,
+                description
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "EVT-TEST-000001",
+                "SHP-900002",
+                "Recovery Executed",
+                "2026-09-13 12:00:00",
+                "Network",
+                "Test recovery event",
+            ),
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO shipment_events (
+                event_id,
+                shipment_id,
+                event_type,
+                event_timestamp,
+                location,
+                description
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "EVT-TEST-000002",
+                "SHP-900002",
+                "Recovery Executed",
+                "2026-09-14 12:00:00",
+                "Network",
+                "Newer test recovery event",
+            ),
+        )
+
+        connection.commit()
+
+        row = shipments_repo.get_latest_recovery_event_id(
+            connection,
+            "SHP-900002",
+        )
+
+        assert row["event_id"] == "EVT-TEST-000002"
 
     finally:
         connection.close()

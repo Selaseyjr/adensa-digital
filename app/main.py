@@ -2,7 +2,9 @@ import streamlit as st
 
 from app.database import get_connection
 from app.decision_engine import get_recommendation
+from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
+from app.repositories import shipments_repo
 from app.workflow_engine import (
     approve_action,
     reject_action,
@@ -72,8 +74,6 @@ def main():
 
     try:
 
-        cursor = connection.cursor()
-
         # --------------------------------------------------
         # HEADER
         # --------------------------------------------------
@@ -91,26 +91,13 @@ def main():
         # KPI DATA
         # --------------------------------------------------
 
-        cursor.execute(
-            """
-            SELECT COUNT(*)
-            FROM exceptions
-            WHERE resolution_status = 'Open'
-            """
+        open_exceptions = exceptions_repo.count_open_exceptions(
+            connection,
         )
 
-        open_exceptions = cursor.fetchone()[0]
-
-        cursor.execute(
-            """
-            SELECT COUNT(*)
-            FROM exceptions
-            WHERE resolution_status = 'Open'
-            AND severity = 'Critical'
-            """
+        critical_exceptions = exceptions_repo.count_open_critical_exceptions(
+            connection,
         )
-
-        critical_exceptions = cursor.fetchone()[0]
 
         pending_approvals = recovery_actions_repo.count_actions_by_status(
             connection,
@@ -246,40 +233,9 @@ def main():
 
         st.header("Exception Inbox")
 
-        cursor.execute(
-            """
-            SELECT
-                e.exception_id,
-                e.shipment_id,
-                e.exception_type,
-                e.severity,
-                e.estimated_impact,
-                e.resolution_status,
-                s.transport_mode,
-                s.current_location,
-                s.estimated_arrival,
-                o.priority,
-                o.required_delivery_date
-            FROM exceptions e
-            JOIN shipments s
-                ON e.shipment_id = s.shipment_id
-            JOIN orders o
-                ON s.order_id = o.order_id
-            WHERE e.resolution_status = 'Open'
-            ORDER BY
-                CASE e.severity
-                    WHEN 'Critical' THEN 1
-                    WHEN 'High' THEN 2
-                    WHEN 'Medium' THEN 3
-                    WHEN 'Low' THEN 4
-                    ELSE 5
-                END,
-                e.detected_at
-            LIMIT 100
-            """
+        exceptions = exceptions_repo.get_open_exceptions_inbox(
+            connection,
         )
-
-        exceptions = cursor.fetchall()
 
         if not exceptions:
 
@@ -707,20 +663,10 @@ def main():
 
                             # Capture the current shipment state
                             # before execution.
-                            cursor.execute(
-                                """
-                                SELECT
-                                    transport_mode,
-                                    carrier_id
-                                FROM shipments
-                                WHERE shipment_id = ?
-                                """,
-                                (
-                                    selected_exception["shipment_id"],
-                                ),
+                            previous_shipment = shipments_repo.get_shipment_transport_mode_and_carrier(
+                                connection,
+                                selected_exception["shipment_id"],
                             )
-
-                            previous_shipment = cursor.fetchone()
 
                             previous_mode = (
                                 previous_shipment["transport_mode"]
@@ -732,52 +678,22 @@ def main():
                             )
 
                             # Read the updated shipment.
-                            cursor.execute(
-                                """
-                                SELECT
-                                    transport_mode,
-                                    carrier_id,
-                                    estimated_arrival
-                                FROM shipments
-                                WHERE shipment_id = ?
-                                """,
-                                (
-                                    selected_exception["shipment_id"],
-                                ),
+                            updated_shipment = shipments_repo.get_shipment_delivery_state(
+                                connection,
+                                selected_exception["shipment_id"],
                             )
-
-                            updated_shipment = cursor.fetchone()
 
                             # Read the recovery event.
-                            cursor.execute(
-                                """
-                                SELECT event_id
-                                FROM shipment_events
-                                WHERE shipment_id = ?
-                                AND event_type = 'Recovery Executed'
-                                ORDER BY event_timestamp DESC
-                                LIMIT 1
-                                """,
-                                (
-                                    selected_exception["shipment_id"],
-                                ),
+                            recovery_event = shipments_repo.get_latest_recovery_event_id(
+                                connection,
+                                selected_exception["shipment_id"],
                             )
-
-                            recovery_event = cursor.fetchone()
 
                             # Read final exception status.
-                            cursor.execute(
-                                """
-                                SELECT resolution_status
-                                FROM exceptions
-                                WHERE exception_id = ?
-                                """,
-                                (
-                                    selected_exception_id,
-                                ),
+                            final_exception = exceptions_repo.get_exception_resolution_status(
+                                connection,
+                                selected_exception_id,
                             )
-
-                            final_exception = cursor.fetchone()
 
                             exception_status = (
                                 final_exception[

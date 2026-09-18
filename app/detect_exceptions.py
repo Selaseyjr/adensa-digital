@@ -3,6 +3,8 @@ from datetime import datetime
 
 from app.config import SIMULATION_TIMESTAMP
 from app.database import get_connection
+from app.repositories import exceptions_repo
+from app.repositories import shipments_repo
 
 logger = logging.getLogger(__name__)
 
@@ -13,18 +15,13 @@ logger = logging.getLogger(__name__)
 
 def detect_exceptions(connection):
 
-    cursor = connection.cursor()
-
     # --------------------------------------------------
     # CHECK EXISTING EXCEPTIONS
     # --------------------------------------------------
 
-    cursor.execute("""
-        SELECT COUNT(*)
-        FROM exceptions
-    """)
-
-    existing_count = cursor.fetchone()[0]
+    existing_count = exceptions_repo.count_exceptions(
+        connection
+    )
 
     if existing_count > 0:
         logger.info(
@@ -37,21 +34,9 @@ def detect_exceptions(connection):
     # LOAD SHIPMENT + ORDER INFORMATION
     # --------------------------------------------------
 
-    cursor.execute("""
-        SELECT
-            s.shipment_id,
-            s.planned_arrival,
-            s.estimated_arrival,
-            s.status,
-            s.priority,
-            o.required_delivery_date
-        FROM shipments s
-        JOIN orders o
-            ON s.order_id = o.order_id
-        ORDER BY s.shipment_id
-    """)
-
-    shipments = cursor.fetchall()
+    shipments = shipments_repo.get_shipments_with_required_delivery(
+        connection
+    )
 
     if not shipments:
         logger.warning("⚠ No shipments found.")
@@ -152,20 +137,10 @@ def detect_exceptions(connection):
 
     if exception_records:
 
-        cursor.executemany("""
-            INSERT INTO exceptions (
-                exception_id,
-                shipment_id,
-                exception_type,
-                severity,
-                detected_at,
-                description,
-                estimated_impact,
-                resolution_status,
-                resolved_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, exception_records)
+        exceptions_repo.insert_exceptions(
+            connection,
+            exception_records,
+        )
 
         connection.commit()
 
