@@ -16,6 +16,9 @@ Design:
 - Foreign-key enforcement is enabled on the test connection.
 - The connection is closed after the test; pytest removes tmp_path.
 
+seed_master_data() inserts the shared deterministic master rows
+(warehouse, customer, carrier, order).
+
 seed_minimal_supply_chain() inserts the smallest deterministic
 master/operational dataset needed by database tests:
 
@@ -58,11 +61,10 @@ def temp_database(tmp_path, monkeypatch):
     connection.close()
 
 
-def seed_minimal_supply_chain(connection):
+def seed_master_data(connection):
     """
-    Insert the minimal deterministic dataset used by
-    database-dependent tests (two exceptions with opposite
-    recommendation outcomes).
+    Insert the shared deterministic master rows used by every
+    database test (warehouse, customer, carrier, order).
     """
 
     cursor = connection.cursor()
@@ -116,6 +118,18 @@ def seed_minimal_supply_chain(connection):
         )
         """
     )
+
+
+def seed_minimal_supply_chain(connection):
+    """
+    Insert the minimal deterministic dataset used by
+    database-dependent tests (two exceptions with opposite
+    recommendation outcomes).
+    """
+
+    seed_master_data(connection)
+
+    cursor = connection.cursor()
 
     # On-time Road shipment backing the Low-severity exception.
     cursor.execute(
@@ -190,6 +204,20 @@ def seed_minimal_supply_chain(connection):
     )
 
     connection.commit()
+
+
+@pytest.fixture()
+def master_database(temp_database):
+    """
+    Provide an isolated database containing only the deterministic
+    master rows (warehouse, customer, carrier, order) and no
+    operational data — the starting point for testing the
+    detection and generation modules.
+    """
+
+    seed_master_data(temp_database)
+
+    return temp_database
 
 
 @pytest.fixture()
