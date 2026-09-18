@@ -272,9 +272,6 @@ def test_execute_approved_recovery_still_open(seeded_database):
         outcome = services.execute_approved_recovery(
             connection,
             action["action_id"],
-            "EXC-900002",
-            "SHP-900002",
-            "2026-09-15",
         )
 
         assert outcome["success"] is True
@@ -326,9 +323,6 @@ def test_execute_approved_recovery_resolved_branch(seeded_database):
         outcome = services.execute_approved_recovery(
             connection,
             action["action_id"],
-            "EXC-900002",
-            "SHP-900002",
-            "2026-09-20",
         )
 
         assert outcome["success"] is True
@@ -381,9 +375,6 @@ def test_execute_approved_recovery_failure_outcome(seeded_database):
         outcome = services.execute_approved_recovery(
             connection,
             action["action_id"],
-            "EXC-900002",
-            "SHP-900002",
-            "2026-09-15",
         )
 
         assert outcome["success"] is False
@@ -483,9 +474,6 @@ def test_execute_service_propagates_non_domain_errors(
             services.execute_approved_recovery(
                 connection,
                 action["action_id"],
-                "EXC-900002",
-                "SHP-900002",
-                "2026-09-15",
             )
 
         assert "Simulated programming failure" in str(excinfo.value)

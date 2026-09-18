@@ -601,9 +601,6 @@ def main():
                             st.session_state.last_workflow_outcome = services.execute_approved_recovery(
                                 connection,
                                 action["action_id"],
-                                selected_exception_id,
-                                selected_exception["shipment_id"],
-                                selected_exception["required_delivery_date"],
                             )
 
                             # Tell the next Streamlit run to bring

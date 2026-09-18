@@ -22,3 +22,16 @@ class RecoveryWorkflowError(ValueError):
     operation cannot be performed because the domain state
     does not permit it.
     """
+
+
+class ActionNotFoundError(RecoveryWorkflowError):
+    """
+    The addressed recovery action does not exist.
+    """
+
+
+class InvalidTransitionError(RecoveryWorkflowError):
+    """
+    The requested workflow transition is not permitted
+    from the action's current state.
+    """

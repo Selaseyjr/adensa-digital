@@ -262,3 +262,238 @@ def test_recovery_workflow_error_maps_to_409(
     assert response.json() == {
         "detail": "Simulated workflow violation."
     }
+
+
+# ==================================================
+# MUTATIONS — APPROVE
+# ==================================================
+
+def test_approve_happy_path_returns_identity_fields(api_client):
+    client, connection = api_client
+
+    try:
+        action = _generate_options_and_action(connection)
+    finally:
+        connection.close()
+
+    response = client.post(
+        "/exceptions/EXC-900002/approve",
+        json={"approved_by": "API Test"},
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["success"] is True
+    assert body["action_id"] == action["action_id"]
+    assert body["shipment_id"] == "SHP-900002"
+    # new_mode comes from the stored recovery option
+    # (Road wins the seeded recommendation), not from
+    # the shipment's current mode.
+    assert body["previous_mode"] == "Sea"
+    assert body["new_mode"] == "Road"
+    assert body["carrier_id"].startswith("CAR-")
+    assert body["new_eta"] == "Pending execution"
+    assert body["exception_status"] == "Open"
+    assert "approved successfully" in body["message"]
+
+
+def test_approve_missing_exception_returns_404(api_client):
+    client, _ = api_client
+
+    response = client.post(
+        "/exceptions/EXC-999999/approve",
+        json={"approved_by": "API Test"},
+    )
+
+    assert response.status_code == 404
+    assert "No recovery action exists" in response.json()["detail"]
+
+
+def test_approve_missing_actor_returns_422(api_client):
+    client, _ = api_client
+
+    response = client.post(
+        "/exceptions/EXC-900002/approve",
+        json={},
+    )
+
+    assert response.status_code == 422
+
+
+def test_approve_empty_actor_returns_422(api_client):
+    client, _ = api_client
+
+    response = client.post(
+        "/exceptions/EXC-900002/approve",
+        json={"approved_by": ""},
+    )
+
+    assert response.status_code == 422
+
+
+def test_double_approve_returns_409(api_client):
+    client, connection = api_client
+
+    try:
+        _generate_options_and_action(connection)
+    finally:
+        connection.close()
+
+    first = client.post(
+        "/exceptions/EXC-900002/approve",
+        json={"approved_by": "API Test"},
+    )
+
+    assert first.status_code == 200
+
+    second = client.post(
+        "/exceptions/EXC-900002/approve",
+        json={"approved_by": "API Test"},
+    )
+
+    assert second.status_code == 409
+    assert "Invalid workflow transition" in second.json()["detail"]
+
+
+# ==================================================
+# MUTATIONS — REJECT
+# ==================================================
+
+def test_reject_happy_path_preserves_sentinels(api_client):
+    client, connection = api_client
+
+    try:
+        _generate_options_and_action(connection)
+    finally:
+        connection.close()
+
+    response = client.post(
+        "/exceptions/EXC-900002/reject",
+        json={"rejected_by": "API Test"},
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["success"] is True
+    assert "rejected" in body["message"]
+    assert body["exception_status"] == "Open"
+    assert body["carrier_id"] == "No execution"
+    assert body["new_eta"] == "No execution"
+    assert body["recovery_event"] == "None"
+
+
+def test_reject_missing_actor_returns_422(api_client):
+    client, _ = api_client
+
+    response = client.post(
+        "/exceptions/EXC-900002/reject",
+        json={},
+    )
+
+    assert response.status_code == 422
+
+
+# ==================================================
+# MUTATIONS — EXECUTE
+# ==================================================
+
+def test_execute_still_open_branch_returns_200(api_client):
+    client, connection = api_client
+
+    try:
+        action = _generate_options_and_action(connection)
+
+        services.approve_recovery(
+            connection,
+            action["action_id"],
+            "API Test",
+        )
+    finally:
+        connection.close()
+
+    response = client.post(
+        f"/recovery-actions/{action['action_id']}/execute",
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["success"] is True
+    # Seeded timing: Sea 2026-09-20 vs required 2026-09-15,
+    # Road arrives 2026-09-17 — still late, so Open.
+    assert body["previous_mode"] == "Sea"
+    assert body["new_mode"] == "Road"
+    assert body["new_eta"] == "2026-09-17"
+    assert body["exception_status"] == "Open"
+    assert "executed successfully" in body["message"]
+
+
+def test_execute_missing_action_returns_404(
+    api_client,
+):
+    """
+    ActionNotFoundError specificity: the subtype handler must
+    answer 404 even though the base RecoveryWorkflowError
+    handler (409) is also registered.
+    """
+
+    client, _ = api_client
+
+    response = client.post(
+        "/recovery-actions/ACT-999999/execute",
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "Action ACT-999999 not found."
+    )
+
+
+def test_execute_closed_exception_maps_failure_outcome_to_409(
+    api_client,
+):
+    """
+    A structured success False outcome from the service is an
+    intentional HTTP 409 whose detail is exactly the outcome
+    message — mapped via the success field, never by
+    inspecting message strings. The base RecoveryWorkflowError
+    handler delivers the 409.
+    """
+
+    client, connection = api_client
+
+    try:
+        action = _generate_options_and_action(connection)
+
+        services.approve_recovery(
+            connection,
+            action["action_id"],
+            "API Test",
+        )
+
+        connection.execute(
+            """
+            UPDATE exceptions
+            SET resolution_status = 'Resolved'
+            WHERE exception_id = 'EXC-900002'
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    response = client.post(
+        f"/recovery-actions/{action['action_id']}/execute",
+    )
+
+    assert response.status_code == 409
+
+    detail = response.json()["detail"]
+
+    assert detail.startswith("Recovery execution failed:")
+    assert "already Resolved" in detail

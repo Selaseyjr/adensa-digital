@@ -4,7 +4,10 @@ from datetime import datetime, timedelta
 from app.config import (
     RECOVERY_EXECUTION_OFFSET_DAYS,
 )
-from app.errors import RecoveryWorkflowError
+from app.errors import (
+    ActionNotFoundError,
+    RecoveryWorkflowError,
+)
 from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
@@ -86,7 +89,7 @@ def execute_recovery_action(
     )
 
     if action is None:
-        raise RecoveryWorkflowError(
+        raise ActionNotFoundError(
             f"Action {action_id} not found."
         )
 

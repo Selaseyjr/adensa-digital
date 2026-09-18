@@ -2,7 +2,11 @@ import logging
 
 from app.config import SIMULATION_TIMESTAMP
 from app.decision_engine import get_recommendation
-from app.errors import RecoveryWorkflowError
+from app.errors import (
+    ActionNotFoundError,
+    InvalidTransitionError,
+    RecoveryWorkflowError,
+)
 from app.repositories import recovery_actions_repo
 
 logger = logging.getLogger(__name__)
@@ -63,7 +67,7 @@ def validate_transition(current_status, new_status):
         current_status,
         new_status,
     ):
-        raise RecoveryWorkflowError(
+        raise InvalidTransitionError(
             f"Invalid workflow transition: "
             f"{current_status} → {new_status}"
         )
@@ -271,7 +275,7 @@ def approve_action(
     )
 
     if action is None:
-        raise RecoveryWorkflowError(
+        raise ActionNotFoundError(
             f"Action {action_id} not found."
         )
 
@@ -368,7 +372,7 @@ def reject_action(
     )
 
     if action is None:
-        raise RecoveryWorkflowError(
+        raise ActionNotFoundError(
             f"Action {action_id} not found."
         )
 

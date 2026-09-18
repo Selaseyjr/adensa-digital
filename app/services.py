@@ -31,7 +31,10 @@ Rules:
 """
 
 from app.decision_engine import get_recommendation
-from app.errors import RecoveryWorkflowError
+from app.errors import (
+    ActionNotFoundError,
+    RecoveryWorkflowError,
+)
 from app.execution_engine import execute_recovery_action
 from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
@@ -230,23 +233,44 @@ def reject_recovery(
 def execute_approved_recovery(
     connection,
     action_id,
-    exception_id,
-    shipment_id,
-    required_delivery,
 ):
     """
     Execute an approved recovery action and return the
-    application outcome dictionary for the UI.
+    application outcome dictionary.
 
-    The engine performs the execution and its transaction
-    boundary; this service collects the resulting
-    application state and normalizes it into the outcome
-    dictionary.
+    The service resolves its own context through the
+    repositories: the action's exception, the exception's
+    operational context and the shipment's transport mode
+    captured BEFORE the engine mutates it. The engine then
+    performs the execution and its transaction boundary;
+    this service collects the resulting application state
+    and normalizes it into the outcome dictionary.
 
     On failure the returned dictionary carries
     success False and the error message, mirroring the
     application behavior previously implemented by the UI.
     """
+
+    action = recovery_actions_repo.get_action_by_id(
+        connection,
+        action_id,
+    )
+
+    if action is None:
+        raise ActionNotFoundError(
+            f"Action {action_id} not found."
+        )
+
+    context = exceptions_repo.get_exception_operational_context(
+        connection,
+        action["exception_id"],
+    )
+
+    shipment_id = context["shipment_id"]
+
+    exception_id = action["exception_id"]
+
+    required_delivery = context["required_delivery_date"]
 
     # Capture the current shipment state before execution.
     previous_shipment = shipments_repo.get_shipment_transport_mode_and_carrier(
