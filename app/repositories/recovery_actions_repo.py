@@ -311,8 +311,7 @@ def list_actions(
     """
     Return the first recovery actions ordered by action_id.
 
-    Moved verbatim from the workflow engine
-    show_sample_actions.
+    Consumed by the terminal CLI sample display in app/cli.py.
     """
 
     cursor = connection.cursor()
@@ -368,8 +367,7 @@ def get_status_counts(connection):
     Return the recovery-action status distribution
     grouped by status, ordered by count descending.
 
-    Moved verbatim from the workflow engine
-    show_workflow_summary.
+    Consumed by the terminal CLI summary display in app/cli.py.
     """
 
     cursor = connection.cursor()
@@ -386,3 +384,49 @@ def get_status_counts(connection):
     ).fetchall()
 
     return statuses
+
+
+def get_execution_result(
+    connection,
+    action_id,
+):
+    """
+    Return the full execution state of a recovery action —
+    action, exception, and shipment columns joined — or None
+    when the action does not exist.
+
+    Moved verbatim from the CLI display read previously
+    embedded in execution_engine.show_execution_result.
+    """
+
+    cursor = connection.cursor()
+
+    return cursor.execute(
+        """
+        SELECT
+            ra.action_id,
+            ra.exception_id,
+            ra.option_id,
+            ra.status AS action_status,
+            ra.executed_at,
+
+            e.resolution_status,
+            e.resolved_at,
+
+            s.shipment_id,
+            s.transport_mode,
+            s.carrier_id,
+            s.estimated_arrival
+
+        FROM recovery_actions ra
+
+        JOIN exceptions e
+            ON ra.exception_id = e.exception_id
+
+        JOIN shipments s
+            ON e.shipment_id = s.shipment_id
+
+        WHERE ra.action_id = ?
+        """,
+        (action_id,),
+    ).fetchone()

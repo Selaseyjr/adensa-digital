@@ -955,3 +955,93 @@ def test_get_open_exception_contexts(seeded_database):
 
     finally:
         connection.close()
+
+
+# ==================================================
+# CLI-SUPPORT READS
+# ==================================================
+
+def test_get_open_exception_ids(seeded_database):
+    """
+    The open-exception iteration returns open exception IDs in
+    exception_id order and excludes resolved exceptions.
+    """
+
+    connection = seeded_database
+
+    try:
+        ids = [
+            row["exception_id"]
+            for row in exceptions_repo.get_open_exception_ids(
+                connection
+            )
+        ]
+
+        assert ids == ["EXC-900001", "EXC-900002"]
+
+        connection.execute(
+            """
+            UPDATE exceptions
+            SET resolution_status = 'Resolved'
+            WHERE exception_id = 'EXC-900002'
+            """
+        )
+        connection.commit()
+
+        ids = [
+            row["exception_id"]
+            for row in exceptions_repo.get_open_exception_ids(
+                connection
+            )
+        ]
+
+        assert ids == ["EXC-900001"]
+
+    finally:
+        connection.close()
+
+
+def test_get_execution_result(seeded_database):
+    """
+    The execution-result read joins action, exception and
+    shipment state; a missing action yields None.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        options = recovery_options_repo.get_feasible_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        _insert_test_action(
+            connection,
+            "ACT-900002",
+            option_id=options[0]["option_id"],
+        )
+
+        connection.commit()
+
+        result = recovery_actions_repo.get_execution_result(
+            connection,
+            "ACT-900002",
+        )
+
+        assert result is not None
+        assert result["action_id"] == "ACT-900002"
+        assert result["exception_id"] == "EXC-900002"
+        assert result["shipment_id"] == "SHP-900002"
+        assert result["action_status"] == "Pending Approval"
+
+        missing = recovery_actions_repo.get_execution_result(
+            connection,
+            "ACT-DOES-NOT-EXIST",
+        )
+
+        assert missing is None
+
+    finally:
+        connection.close()

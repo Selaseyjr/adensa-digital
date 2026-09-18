@@ -295,3 +295,24 @@ def insert_exceptions(
     )
 
     return cursor.rowcount
+
+
+def get_open_exception_ids(connection):
+    """
+    Return the IDs of all open exceptions ordered by
+    exception_id.
+
+    Moved verbatim from the open-exception iteration read
+    previously embedded in decision_engine.run_decision_engine.
+    """
+
+    cursor = connection.cursor()
+
+    return cursor.execute(
+        """
+        SELECT exception_id
+        FROM exceptions
+        WHERE resolution_status = 'Open'
+        ORDER BY exception_id
+        """
+    ).fetchall()

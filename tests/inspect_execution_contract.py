@@ -1,5 +1,6 @@
 import inspect
 
+from app import cli
 from app import execution_engine
 
 
@@ -15,6 +16,6 @@ print(
 print(
     "show_execution_result:",
     inspect.signature(
-        execution_engine.show_execution_result
+        cli.show_execution_result
     ),
 )
