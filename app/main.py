@@ -1170,6 +1170,54 @@ def main():
                     "No workflow action currently exists for this exception."
                 )
 
+            # --------------------------------------------------
+            # OPERATIONAL HISTORY
+            # --------------------------------------------------
+
+            st.divider()
+
+            st.header("Operational History")
+
+            st.caption(
+                "Chronological record built from real persisted "
+                "events — detection, option evaluation, decisions, "
+                "executions and recorded interventions."
+            )
+
+            history = services.get_exception_history(
+                connection,
+                selected_exception_id,
+            )
+
+            if history:
+
+                history_rows = [
+                    {
+                        "When": (
+                            entry["timestamp"]
+                            if entry["timestamp"]
+                            else "—"
+                        ),
+                        "Event": entry["event"],
+                        "Detail": entry["detail"],
+                        "Actor": entry["actor"],
+                    }
+                    for entry in history
+                ]
+
+                st.dataframe(
+                    history_rows,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            else:
+
+                st.info(
+                    "No operational history is available for "
+                    "this exception."
+                )
+
         # --------------------------------------------------
         # POST-RERUN SCROLL
         # --------------------------------------------------

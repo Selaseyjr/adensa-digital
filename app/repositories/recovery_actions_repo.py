@@ -183,6 +183,43 @@ def get_latest_action_for_exception(
     return action
 
 
+def get_actions_for_exception(
+    connection,
+    exception_id,
+):
+    """
+    Return ALL recovery actions for an exception, oldest
+    first.
+
+    Used for the operational history: an exception can hold
+    several actions over its lifetime (a rejected action
+    frees the exception for a regenerated one), and action_id
+    increases with creation order.
+    """
+
+    cursor = connection.cursor()
+
+    actions = cursor.execute(
+        """
+        SELECT
+            action_id,
+            option_id,
+            action_type,
+            description,
+            status,
+            approved_by,
+            approved_at,
+            executed_at
+        FROM recovery_actions
+        WHERE exception_id = ?
+        ORDER BY action_id
+        """,
+        (exception_id,),
+    ).fetchall()
+
+    return actions
+
+
 # ==================================================
 # WRITES
 # ==================================================

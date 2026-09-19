@@ -469,3 +469,38 @@ def get_next_exception_number(connection):
         return 1
 
     return max(numbers) + 1
+
+
+def get_exception_lifecycle(
+    connection,
+    exception_id,
+):
+    """
+    Return an exception's lifecycle fields — detection
+    details and current resolution state — or None when the
+    exception does not exist.
+
+    Used for the operational history.
+    """
+
+    cursor = connection.cursor()
+
+    exception = cursor.execute(
+        """
+        SELECT
+            exception_id,
+            shipment_id,
+            exception_type,
+            severity,
+            description,
+            estimated_impact,
+            detected_at,
+            resolution_status,
+            resolved_at
+        FROM exceptions
+        WHERE exception_id = ?
+        """,
+        (exception_id,),
+    ).fetchone()
+
+    return exception
