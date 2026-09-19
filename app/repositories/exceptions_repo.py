@@ -189,7 +189,13 @@ def get_exception_operational_context(
 
             o.required_delivery_date,
 
-            s.priority
+            s.priority,
+
+            s.origin,
+            s.destination,
+
+            o.customer_id,
+            c.customer_name
 
         FROM exceptions e
 
@@ -199,12 +205,42 @@ def get_exception_operational_context(
         JOIN orders o
             ON s.order_id = o.order_id
 
+        JOIN customers c
+            ON o.customer_id = c.customer_id
+
         WHERE e.exception_id = ?
         """,
         (exception_id,),
     ).fetchone()
 
     return exception
+
+
+def get_latest_exception_ids(
+    connection,
+    limit,
+):
+    """
+    Return the most recently numbered exception IDs,
+    ordered from newest to oldest, up to the given limit.
+
+    Used by the operational refresh to report which
+    exceptions a processing run has just detected.
+    """
+
+    cursor = connection.cursor()
+
+    rows = cursor.execute(
+        """
+        SELECT exception_id
+        FROM exceptions
+        ORDER BY exception_id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+    return [row["exception_id"] for row in rows]
 
 
 def get_open_exception_contexts(connection):

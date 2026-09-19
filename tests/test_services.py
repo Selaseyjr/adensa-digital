@@ -588,6 +588,7 @@ def test_run_operational_refresh_orchestrates_stages_in_order(
         assert result == {
             "new_exceptions": 0,
             "new_options": 0,
+            "new_exception_ids": [],
             "actions_evaluated": 7,
             "new_actions": 3,
             "actions_without_recommendation": 4,

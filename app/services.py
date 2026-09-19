@@ -352,6 +352,58 @@ def execute_approved_recovery(
 
 
 # ==================================================
+# EXCEPTION INVESTIGATION CONTEXT
+# ==================================================
+
+def get_exception_context(
+    connection,
+    exception_id,
+):
+    """
+    Return the operational investigation context for one
+    exception, or None when the exception does not exist.
+
+    Projects the existing shared context read into an
+    application-facing structure for the UI and any other
+    client. Contains no business rules: every field is
+    retrieved operational data.
+    """
+
+    context = exceptions_repo.get_exception_operational_context(
+        connection,
+        exception_id,
+    )
+
+    if context is None:
+        return None
+
+    return {
+        "exception_id": context["exception_id"],
+        "shipment_id": context["shipment_id"],
+        "order_id": context["order_id"],
+        "customer_id": context["customer_id"],
+        "customer_name": context["customer_name"],
+        "exception_type": context["exception_type"],
+        "severity": context["severity"],
+        "priority": context["priority"],
+        "origin": context["origin"],
+        "destination": context["destination"],
+        "route": (
+            f"{context['origin']} → "
+            f"{context['destination']}"
+        ),
+        "transport_mode": context["transport_mode"],
+        "carrier_id": context["carrier_id"],
+        "shipment_status": context["shipment_status"],
+        "planned_departure": context["planned_departure"],
+        "estimated_arrival": context["estimated_arrival"],
+        "required_delivery_date": context[
+            "required_delivery_date"
+        ],
+    }
+
+
+# ==================================================
 # OPERATIONAL PIPELINE REFRESH
 # ==================================================
 
@@ -375,7 +427,10 @@ def run_operational_refresh(connection):
     the newly created work is measured as before/after
     deltas through the existing repository counts. The
     action-generation summary is returned by the workflow
-    engine and passed through unchanged.
+    engine and passed through unchanged. The identities of
+    newly detected exceptions are reported through the
+    latest-exception read so clients can surface exactly
+    what the run has just found.
     """
 
     exceptions_before = exceptions_repo.count_exceptions(
@@ -406,14 +461,24 @@ def run_operational_refresh(connection):
         - 1
     )
 
+    new_exception_count = (
+        exceptions_after
+        - exceptions_before
+    )
+
     return {
-        "new_exceptions": (
-            exceptions_after
-            - exceptions_before
-        ),
+        "new_exceptions": new_exception_count,
         "new_options": (
             options_after
             - options_before
+        ),
+        "new_exception_ids": (
+            exceptions_repo.get_latest_exception_ids(
+                connection,
+                limit=new_exception_count,
+            )
+            if new_exception_count
+            else []
         ),
         "actions_evaluated": actions_summary["evaluated"],
         "new_actions": actions_summary["created"],

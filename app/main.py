@@ -67,6 +67,9 @@ def main():
     if "last_simulation_result" not in st.session_state:
         st.session_state.last_simulation_result = None
 
+    if "focus_exception_id" not in st.session_state:
+        st.session_state.focus_exception_id = None
+
     # --------------------------------------------------
     # DATABASE CONNECTION
     # --------------------------------------------------
@@ -144,6 +147,26 @@ def main():
                     f"{refresh_result['new_actions']} "
                     f"new workflow actions"
                 )
+
+                # Surface the identities of the exceptions the
+                # run has just detected; a single new exception
+                # becomes the focused investigation target.
+                new_exception_ids = refresh_result[
+                    "new_exception_ids"
+                ]
+
+                if new_exception_ids:
+
+                    st.caption(
+                        "New exceptions: "
+                        + ", ".join(new_exception_ids)
+                    )
+
+                    if len(new_exception_ids) == 1:
+
+                        st.session_state.focus_exception_id = (
+                            new_exception_ids[0]
+                        )
 
         # --------------------------------------------------
         # HEADER
@@ -318,7 +341,23 @@ def main():
             for row in exceptions
         ]
 
-        # Preserve the currently selected exception when possible.
+        # Focus a newly detected exception after an
+        # operational refresh; otherwise preserve the
+        # currently selected exception when possible.
+        focus_exception_id = (
+            st.session_state.focus_exception_id
+        )
+
+        if (
+            focus_exception_id
+            and focus_exception_id in exception_options
+        ):
+            st.session_state.selected_exception_id = (
+                focus_exception_id
+            )
+
+        st.session_state.focus_exception_id = None
+
         if (
             st.session_state.selected_exception_id
             not in exception_options
@@ -344,6 +383,26 @@ def main():
             for row in exceptions
             if row["exception_id"] == selected_exception_id
         )
+
+        # --------------------------------------------------
+        # EXCEPTION INVESTIGATION CONTEXT
+        # --------------------------------------------------
+
+        context = services.get_exception_context(
+            connection,
+            selected_exception_id,
+        )
+
+        if context:
+
+            st.caption(
+                f"Investigating {context['route']} · "
+                f"Shipment {context['shipment_id']} is "
+                f"{context['shipment_status'].lower()} · "
+                f"Order {context['order_id']} for "
+                f"{context['customer_name']} "
+                f"({context['customer_id']})"
+            )
 
         # --------------------------------------------------
         # EXCEPTION DETAILS
@@ -499,40 +558,57 @@ def main():
 
             if alternatives:
 
-                st.subheader("Alternative Recovery Options")
+                st.subheader("Recovery Options Comparison")
 
-                for alternative in alternatives:
+                # One comparable row per feasible option: the
+                # recommendation first, then the alternatives
+                # in the decision engine's own ranking. All
+                # values come from the existing scoring
+                # contract; nothing is recalculated here.
+                comparison_options = [
+                    recovery,
+                    *alternatives,
+                ]
 
-                    with st.expander(
-                        f"{alternative['transport_mode']} "
-                        f"— Score "
-                        f"{alternative['decision_score']:.2f}"
-                    ):
+                comparison_rows = []
 
-                        st.write(
-                            f"**Carrier:** "
-                            f"{alternative['carrier_id']}"
-                        )
+                for position, option in enumerate(
+                    comparison_options
+                ):
 
-                        st.write(
-                            f"**Estimated Cost:** "
-                            f"€{alternative['estimated_cost']:,.2f}"
-                        )
+                    comparison_rows.append(
+                        {
+                            "Option": (
+                                "Recommended"
+                                if position == 0
+                                else "Alternative"
+                            ),
+                            "Mode": (
+                                option["transport_mode"]
+                            ),
+                            "Carrier": (
+                                option["carrier_id"]
+                            ),
+                            "Cost (€)": (
+                                f"{option['estimated_cost']:,.2f}"
+                            ),
+                            "Transit (days)": (
+                                f"{option['estimated_transit_days']:.0f}"
+                            ),
+                            "Risk": (
+                                f"{option['risk_score']:.0f}"
+                            ),
+                            "Score": (
+                                f"{option['decision_score']:.2f}"
+                            ),
+                        }
+                    )
 
-                        st.write(
-                            f"**Transit:** "
-                            f"{alternative['estimated_transit_days']:.0f} days"
-                        )
-
-                        st.write(
-                            f"**Risk:** "
-                            f"{alternative['risk_score']:.0f}"
-                        )
-
-                        st.write(
-                            f"**Decision Score:** "
-                            f"{alternative['decision_score']:.2f}"
-                        )
+                st.dataframe(
+                    comparison_rows,
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
             st.divider()
 
@@ -712,8 +788,13 @@ def main():
 
                 elif action["status"] == REJECTED:
 
+                    # The workflow engine stores the rejection
+                    # actor and timestamp in the action's
+                    # approval audit fields.
                     st.warning(
-                        "This recovery action was rejected."
+                        "This recovery action was rejected "
+                        f"by {action['approved_by']} "
+                        f"at {action['approved_at']}."
                     )
 
             else:
