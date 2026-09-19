@@ -42,6 +42,7 @@ from app.repositories import exceptions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
 from app.repositories import shipments_repo
+from app.simulation import create_simulated_arrival
 from app.workflow_engine import (
     approve_action,
     reject_action,
@@ -421,3 +422,32 @@ def run_operational_refresh(connection):
         ],
         "actions_skipped": actions_summary["skipped"],
     }
+
+
+# ==================================================
+# DATA-ARRIVAL SIMULATION
+# ==================================================
+
+def run_data_arrival_simulation(connection):
+    """
+    Create one deterministic simulated shipment arrival.
+
+    The simulation represents new operational data
+    arriving: it creates ONLY the arrival records
+    (shipment + shipment events) through the simulation
+    module and repositories.
+
+    It never creates exceptions, recovery options,
+    recommendations or recovery actions, and it never
+    calls the operational refresh: detecting and
+    processing the arrival is the explicit job of
+    run_operational_refresh(), which the user triggers
+    separately.
+
+    Returns the arrival summary dictionary from the
+    simulation module, or None when the database
+    contains no operational data to derive the scenario
+    from.
+    """
+
+    return create_simulated_arrival(connection)

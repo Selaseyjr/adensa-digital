@@ -64,6 +64,9 @@ def main():
     if "last_refresh_result" not in st.session_state:
         st.session_state.last_refresh_result = None
 
+    if "last_simulation_result" not in st.session_state:
+        st.session_state.last_simulation_result = None
+
     # --------------------------------------------------
     # DATABASE CONNECTION
     # --------------------------------------------------
@@ -77,6 +80,36 @@ def main():
         # --------------------------------------------------
 
         with st.sidebar:
+
+            st.header("Simulation")
+
+            if st.button(
+                "Simulate Shipment Arrival",
+                key="simulate_shipment_arrival",
+            ):
+
+                with st.spinner(
+                    "Creating simulated shipment arrival..."
+                ):
+
+                    st.session_state.last_simulation_result = (
+                        services.run_data_arrival_simulation(
+                            connection,
+                        )
+                    )
+
+                st.rerun()
+
+            if st.session_state.last_simulation_result:
+
+                simulation_result = (
+                    st.session_state.last_simulation_result
+                )
+
+                st.success(
+                    f"{simulation_result['shipment_id']} arrived · "
+                    f"{simulation_result['event_count']} events recorded"
+                )
 
             st.header("Operations")
 

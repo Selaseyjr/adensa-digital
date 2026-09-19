@@ -128,3 +128,188 @@ def get_latest_recovery_event_id(
     )
 
     return cursor.fetchone()
+
+
+# ==================================================
+# ARRIVAL SCENARIO READS
+# ==================================================
+
+def get_arrival_scenario_context(connection):
+    """
+    Return the deterministic baseline context for the
+    controlled arrival scenario: the first shipment's
+    order and carrier by order_id, with the order's
+    required delivery date and the shipment's route.
+
+    The arrival scenario derives its dates from this
+    order's required delivery date so the simulated
+    delay always lands on a real customer commitment.
+    Returns None when no operational data exists.
+    """
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            s.order_id,
+            o.required_delivery_date,
+            s.carrier_id,
+            s.origin,
+            s.destination
+        FROM shipments s
+        JOIN orders o
+            ON s.order_id = o.order_id
+        ORDER BY s.order_id
+        LIMIT 1
+        """
+    )
+
+    return cursor.fetchone()
+
+
+def get_next_simulation_shipment_number(connection):
+    """
+    Determine the next simulation shipment number from
+    existing SHP-SIM-% records.
+
+    Keeps simulated arrival IDs deterministic and unique
+    across repeated simulations, mirroring the option and
+    exception numbering approach, without colliding with
+    bootstrap shipment IDs.
+    """
+
+    cursor = connection.cursor()
+
+    shipments = cursor.execute(
+        """
+        SELECT shipment_id
+        FROM shipments
+        WHERE shipment_id LIKE 'SHP-SIM-%'
+        """
+    ).fetchall()
+
+    numbers = []
+
+    for shipment in shipments:
+
+        shipment_id = shipment["shipment_id"]
+
+        try:
+            number = int(
+                shipment_id.replace("SHP-SIM-", "")
+            )
+
+            numbers.append(number)
+
+        except ValueError:
+            continue
+
+    if not numbers:
+        return 1
+
+    return max(numbers) + 1
+
+
+def get_max_simulation_event_number(connection):
+    """
+    Return the highest existing EVT-SIM-% event number,
+    or 0 when none exist, so simulated event IDs continue
+    the sequence across repeated arrivals.
+    """
+
+    cursor = connection.cursor()
+
+    events = cursor.execute(
+        """
+        SELECT event_id
+        FROM shipment_events
+        WHERE event_id LIKE 'EVT-SIM-%'
+        """
+    ).fetchall()
+
+    numbers = []
+
+    for event in events:
+
+        event_id = event["event_id"]
+
+        try:
+            number = int(
+                event_id.replace("EVT-SIM-", "")
+            )
+
+            numbers.append(number)
+
+        except ValueError:
+            continue
+
+    if not numbers:
+        return 0
+
+    return max(numbers)
+
+
+# ==================================================
+# ARRIVAL WRITES
+# ==================================================
+
+def insert_shipment(
+    connection,
+    shipment_record,
+):
+    """
+    Insert one shipment record.
+
+    No commit happens here: the caller owns the arrival
+    transaction so shipment and events are created
+    atomically.
+    """
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO shipments (
+            shipment_id, order_id, carrier_id, origin,
+            destination, transport_mode, quantity, weight_kg,
+            volume_m3, priority, planned_departure,
+            actual_departure, planned_arrival,
+            estimated_arrival, actual_arrival, status,
+            shipping_cost, distance_km, current_location,
+            last_updated
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        shipment_record,
+    )
+
+
+def insert_shipment_events(
+    connection,
+    event_records,
+):
+    """
+    Insert a batch of shipment event records.
+
+    No commit happens here: the caller owns the arrival
+    transaction so shipment and events are created
+    atomically.
+    """
+
+    cursor = connection.cursor()
+
+    cursor.executemany(
+        """
+        INSERT INTO shipment_events (
+            event_id,
+            shipment_id,
+            event_type,
+            event_timestamp,
+            location,
+            description
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        event_records,
+    )
