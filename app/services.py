@@ -76,6 +76,12 @@ def get_dashboard_metrics(connection):
 def get_exception_inbox(connection):
     """
     Return the open-exception inbox rows for the dashboard.
+
+    Each row carries the count of feasible recovery options
+    (feasible_option_count) from the existing option data,
+    and rows are ordered actionable-first inside each
+    severity class. The count is retrieved operational
+    data; the UI renders the actionable/monitoring wording.
     """
 
     return exceptions_repo.get_open_exceptions_inbox(connection)
@@ -117,6 +123,70 @@ def get_latest_action(
         connection,
         exception_id,
     )
+
+
+def get_recovery_assessment(
+    connection,
+    exception_id,
+):
+    """
+    Return the recovery assessment for an exception: the
+    decision-engine review plus, when no recommendation
+    exists, the evaluated options that explain why.
+
+    When the engine has a feasible option to recommend,
+    the assessment carries the recommendation and its
+    alternatives exactly as the review does. When it has
+    none, the previously generated options - feasible and
+    infeasible - are included as evaluated_options, each
+    with its own operational data (mode, carrier, cost,
+    transit, risk) and its feasibility verdict. The engines
+    do not persist a granular rejection reason, so none is
+    invented here: the verdict and the option's operational
+    data are the strongest truthful information available.
+
+    Returns None when the exception does not exist.
+    """
+
+    review = get_recommendation(
+        connection,
+        exception_id,
+    )
+
+    if review is None:
+        return None
+
+    if review["recommendation"] is not None:
+
+        return {
+            "recommendation": review["recommendation"],
+            "alternatives": review["alternatives"],
+            "evaluated_options": [],
+        }
+
+    return {
+        "recommendation": None,
+        "alternatives": [],
+        "evaluated_options": [
+            {
+                "option_id": option["option_id"],
+                "transport_mode": option["transport_mode"],
+                "carrier_id": option["carrier_id"],
+                "estimated_cost": option["estimated_cost"],
+                "estimated_transit_days": option[
+                    "estimated_transit_days"
+                ],
+                "risk_score": option["risk_score"],
+                "feasible": bool(option["feasible"]),
+            }
+            for option in (
+                recovery_options_repo.get_options_for_exception(
+                    connection,
+                    exception_id,
+                )
+            )
+        ],
+    }
 
 
 # ==================================================

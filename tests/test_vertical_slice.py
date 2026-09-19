@@ -26,6 +26,7 @@ import pytest
 
 from app import services
 from app.errors import RecoveryWorkflowError
+from app.generate_recovery_options import generate_recovery_options
 from app.simulation import create_simulated_arrival
 
 
@@ -379,6 +380,225 @@ def test_workflow_error_boundary_still_enforced(
                 "ACT-999999",
                 "Nobody",
             )
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# RECOVERY ASSESSMENT (CHECKPOINT E)
+# ==================================================
+
+def _insert_infeasible_option(
+    connection,
+    option_id,
+    exception_id,
+    transport_mode,
+):
+    """Insert one evaluated-but-infeasible option row."""
+
+    connection.execute(
+        """
+        INSERT INTO recovery_options (
+            option_id, exception_id, transport_mode, carrier_id,
+            estimated_cost, estimated_transit_days,
+            capacity_available, risk_score, feasible
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            option_id,
+            exception_id,
+            transport_mode,
+            "CAR-900001",
+            2500.0,
+            12.0,
+            1,
+            85.0,
+            0,
+        ),
+    )
+
+
+def test_recovery_assessment_with_recommendation(seeded_database):
+    """
+    An exception with feasible options carries the
+    recommendation and its alternatives; the evaluated
+    options list stays empty because no explanation of a
+    dead end is needed.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        assessment = services.get_recovery_assessment(
+            connection,
+            "EXC-900002",
+        )
+
+        assert assessment is not None
+
+        assert assessment["recommendation"] is not None
+
+        assert assessment["recommendation"][
+            "option_id"
+        ].startswith("OPT-")
+
+        assert len(assessment["alternatives"]) == 2
+
+        assert assessment["evaluated_options"] == []
+
+    finally:
+        connection.close()
+
+
+def test_recovery_assessment_for_infeasible_options(
+    seeded_database,
+):
+    """
+    An exception whose options were all evaluated and found
+    infeasible gets no recommendation, and the assessment
+    exposes every evaluated option with its operational
+    data and feasibility verdict — the truthful explanation
+    for the missing recommendation.
+    """
+
+    connection = seeded_database
+
+    try:
+        _insert_infeasible_option(
+            connection,
+            "OPT-900101",
+            "EXC-900001",
+            "Road",
+        )
+
+        _insert_infeasible_option(
+            connection,
+            "OPT-900102",
+            "EXC-900001",
+            "Rail",
+        )
+
+        _insert_infeasible_option(
+            connection,
+            "OPT-900103",
+            "EXC-900001",
+            "Sea",
+        )
+
+        connection.commit()
+
+        assessment = services.get_recovery_assessment(
+            connection,
+            "EXC-900001",
+        )
+
+        assert assessment is not None
+
+        assert assessment["recommendation"] is None
+
+        assert assessment["alternatives"] == []
+
+        evaluated = assessment["evaluated_options"]
+
+        assert len(evaluated) == 3
+
+        assert all(
+            option["feasible"] is False
+            for option in evaluated
+        )
+
+        modes = {
+            option["transport_mode"]
+            for option in evaluated
+        }
+
+        assert modes == {"Road", "Rail", "Sea"}
+
+        required_fields = {
+            "option_id",
+            "transport_mode",
+            "carrier_id",
+            "estimated_cost",
+            "estimated_transit_days",
+            "risk_score",
+            "feasible",
+        }
+
+        assert required_fields <= set(
+            evaluated[0].keys()
+        )
+
+    finally:
+        connection.close()
+
+
+def test_recovery_assessment_without_options(seeded_database):
+    """
+    An exception that has never been assessed by the option
+    generator reports no recommendation and no evaluated
+    options: nothing has been evaluated yet.
+    """
+
+    connection = seeded_database
+
+    try:
+        assessment = services.get_recovery_assessment(
+            connection,
+            "EXC-900001",
+        )
+
+        assert assessment is not None
+
+        assert assessment["recommendation"] is None
+
+        assert assessment["evaluated_options"] == []
+
+    finally:
+        connection.close()
+
+
+def test_recovery_assessment_missing_exception(seeded_database):
+    """A nonexistent exception yields None."""
+
+    connection = seeded_database
+
+    try:
+        assert (
+            services.get_recovery_assessment(
+                connection,
+                "EXC-999999",
+            )
+            is None
+        )
+
+    finally:
+        connection.close()
+
+
+def test_inbox_exposes_actionability_counts(seeded_database):
+    """
+    The inbox service passes through the feasible-option
+    counts the triage labels are rendered from.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        inbox = services.get_exception_inbox(connection)
+
+        counts = {
+            row["exception_id"]: row["feasible_option_count"]
+            for row in inbox
+        }
+
+        assert counts["EXC-900002"] == 3
+        assert counts["EXC-900001"] == 0
 
     finally:
         connection.close()

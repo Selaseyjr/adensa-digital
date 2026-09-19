@@ -94,6 +94,44 @@ def get_feasible_options_for_exception(
     return options
 
 
+def get_options_for_exception(
+    connection,
+    exception_id,
+):
+    """
+    Return ALL recovery options for an exception, feasible
+    and infeasible, ordered by option_id.
+
+    Used for the recovery assessment: when no feasible
+    option exists, the evaluated-but-infeasible options
+    explain why no recommendation is available. Mirrors the
+    feasible-options read above without its feasibility
+    filter.
+    """
+
+    cursor = connection.cursor()
+
+    options = cursor.execute(
+        """
+        SELECT
+            option_id,
+            exception_id,
+            transport_mode,
+            carrier_id,
+            estimated_cost,
+            estimated_transit_days,
+            risk_score,
+            feasible
+        FROM recovery_options
+        WHERE exception_id = ?
+        ORDER BY option_id
+        """,
+        (exception_id,),
+    ).fetchall()
+
+    return options
+
+
 def get_option_by_id(
     connection,
     option_id,

@@ -336,10 +336,43 @@ def main():
 
             return
 
-        exception_options = [
-            row["exception_id"]
+        # Triage labels: severity, exception type and the
+        # actionability verdict from the existing option
+        # data — so the operator can distinguish exceptions
+        # requiring action from exceptions under monitoring.
+        inbox_entries = [
+            (
+                row["exception_id"],
+                (
+                    f"{row['exception_id']} — "
+                    f"{row['severity']} · "
+                    f"{row['exception_type']} · "
+                    + (
+                        "Actionable"
+                        if row["feasible_option_count"]
+                        else "No feasible recovery"
+                    )
+                ),
+            )
             for row in exceptions
         ]
+
+        exception_options = [
+            exception_id
+            for exception_id, _ in inbox_entries
+        ]
+
+        exception_display_options = [
+            label
+            for _, label in inbox_entries
+        ]
+
+        label_by_id = dict(inbox_entries)
+
+        display_to_id = {
+            label: exception_id
+            for exception_id, label in inbox_entries
+        }
 
         # Focus a newly detected exception after an
         # operational refresh; otherwise preserve the
@@ -366,13 +399,19 @@ def main():
                 exception_options[0]
             )
 
-        selected_exception_id = st.selectbox(
+        selected_display = st.selectbox(
             "Select an exception to investigate",
-            exception_options,
-            index=exception_options.index(
-                st.session_state.selected_exception_id
+            exception_display_options,
+            index=exception_display_options.index(
+                label_by_id[
+                    st.session_state.selected_exception_id
+                ]
             ),
         )
+
+        selected_exception_id = display_to_id[
+            selected_display
+        ]
 
         st.session_state.selected_exception_id = (
             selected_exception_id
@@ -476,26 +515,94 @@ def main():
 
         st.header("Decision Engine")
 
-        recommendation_result = services.get_exception_review(
+        assessment = services.get_recovery_assessment(
             connection,
             selected_exception_id,
         )
 
         if (
-            recommendation_result is None
-            or recommendation_result.get("recommendation") is None
+            assessment is None
+            or assessment.get("recommendation") is None
         ):
 
-            st.warning(
-                "No feasible recovery recommendation "
-                "is currently available for this exception."
+            # --------------------------------------------------
+            # RECOVERY ASSESSMENT
+            #
+            # No recommendation is itself an operational
+            # result: the evaluated options explain why the
+            # decision engine cannot currently recommend a
+            # recovery. The exception remains open and
+            # monitored.
+            # --------------------------------------------------
+
+            st.subheader("Recovery Assessment")
+
+            st.info(
+                "No recovery recommendation is currently "
+                "available."
+            )
+
+            evaluated_options = (
+                assessment.get("evaluated_options", [])
+                if assessment
+                else []
+            )
+
+            if evaluated_options:
+
+                st.write(
+                    "The decision engine evaluated the "
+                    "following recovery options, but none "
+                    "satisfied the operational constraints:"
+                )
+
+                assessment_rows = []
+
+                for option in evaluated_options:
+
+                    assessment_rows.append(
+                        {
+                            "Option": (
+                                option["option_id"]
+                            ),
+                            "Mode": (
+                                option["transport_mode"]
+                            ),
+                            "Carrier": (
+                                option["carrier_id"]
+                            ),
+                            "Cost (€)": (
+                                f"{option['estimated_cost']:,.2f}"
+                            ),
+                            "Transit (days)": (
+                                f"{option['estimated_transit_days']:.0f}"
+                            ),
+                            "Risk": (
+                                f"{option['risk_score']:.0f}"
+                            ),
+                            "Result": (
+                                "Infeasible"
+                                if not option["feasible"]
+                                else "Feasible"
+                            ),
+                        }
+                    )
+
+                st.dataframe(
+                    assessment_rows,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            st.caption(
+                "This exception remains open and is monitored."
             )
 
         else:
 
-            recovery = recommendation_result["recommendation"]
+            recovery = assessment["recommendation"]
 
-            alternatives = recommendation_result.get(
+            alternatives = assessment.get(
                 "alternatives",
                 [],
             )

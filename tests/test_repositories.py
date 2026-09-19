@@ -1249,3 +1249,177 @@ def test_generate_recovery_options_processes_new_exceptions(
 
     finally:
         connection.close()
+
+
+# ==================================================
+# ALL-OPTIONS READ (RECOVERY ASSESSMENT)
+# ==================================================
+
+def _insert_option(
+    connection,
+    option_id,
+    exception_id,
+    transport_mode,
+    feasible,
+    transit_days,
+    risk_score,
+):
+    """Insert one recovery option row for repository tests."""
+
+    connection.execute(
+        """
+        INSERT INTO recovery_options (
+            option_id, exception_id, transport_mode, carrier_id,
+            estimated_cost, estimated_transit_days,
+            capacity_available, risk_score, feasible
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            option_id,
+            exception_id,
+            transport_mode,
+            "CAR-900001",
+            1000.0,
+            transit_days,
+            1,
+            risk_score,
+            feasible,
+        ),
+    )
+
+
+def test_get_options_for_exception_returns_all_options(
+    seeded_database,
+):
+    """
+    The all-options read returns feasible AND infeasible
+    options in option_id order, so the recovery assessment
+    can explain why no recommendation exists.
+    """
+
+    connection = seeded_database
+
+    try:
+        _insert_option(
+            connection,
+            "OPT-900001",
+            "EXC-900002",
+            "Air",
+            1,
+            2.0,
+            30.0,
+        )
+
+        _insert_option(
+            connection,
+            "OPT-900002",
+            "EXC-900002",
+            "Sea",
+            0,
+            25.0,
+            99.0,
+        )
+
+        options = recovery_options_repo.get_options_for_exception(
+            connection,
+            "EXC-900002",
+        )
+
+        assert [row["option_id"] for row in options] == [
+            "OPT-900001",
+            "OPT-900002",
+        ]
+
+        assert options[0]["feasible"] == 1
+        assert options[1]["feasible"] == 0
+
+        assert options[0]["transport_mode"] == "Air"
+        assert options[1]["estimated_transit_days"] == 25.0
+
+    finally:
+        connection.close()
+
+
+def test_get_options_for_exception_missing_exception_returns_empty(
+    seeded_database,
+):
+    """A nonexistent exception has no options to return."""
+
+    connection = seeded_database
+
+    try:
+        assert (
+            recovery_options_repo.get_options_for_exception(
+                connection,
+                "EXC-999999",
+            )
+            == []
+        )
+
+    finally:
+        connection.close()
+
+
+# ==================================================
+# INBOX ACTIONABILITY
+# ==================================================
+
+def test_inbox_orders_actionable_first_within_severity(
+    seeded_database,
+):
+    """
+    Severity remains the primary inbox ordering; inside
+    each severity class, exceptions with feasible options
+    (actionable) rank above exceptions without them, and
+    every row exposes its feasible_option_count.
+    """
+
+    connection = seeded_database
+
+    try:
+        # The High-severity exception receives its three
+        # feasible options through the real generator.
+        generate_recovery_options(connection)
+
+        # A newer High-severity exception without options
+        # must rank BELOW the actionable one despite being
+        # more recent.
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900003",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "High",
+                    "2026-09-11 12:00:00",
+                    "Newer High exception without options",
+                    1500,
+                    "Open",
+                    None,
+                ),
+            ],
+        )
+
+        connection.commit()
+
+        inbox = exceptions_repo.get_open_exceptions_inbox(
+            connection
+        )
+
+        assert [
+            row["exception_id"] for row in inbox
+        ] == ["EXC-900002", "EXC-900003", "EXC-900001"]
+
+        counts = {
+            row["exception_id"]: row["feasible_option_count"]
+            for row in inbox
+        }
+
+        assert counts["EXC-900002"] == 3
+        assert counts["EXC-900003"] == 0
+        assert counts["EXC-900001"] == 0
+
+    finally:
+        connection.close()

@@ -101,7 +101,13 @@ def get_open_exceptions_inbox(connection):
             s.current_location,
             s.estimated_arrival,
             o.priority,
-            o.required_delivery_date
+            o.required_delivery_date,
+            (
+                SELECT COUNT(*)
+                FROM recovery_options ro
+                WHERE ro.exception_id = e.exception_id
+                  AND ro.feasible = 1
+            ) AS feasible_option_count
         FROM exceptions e
         JOIN shipments s
             ON e.shipment_id = s.shipment_id
@@ -115,6 +121,14 @@ def get_open_exceptions_inbox(connection):
                 WHEN 'Medium' THEN 3
                 WHEN 'Low' THEN 4
                 ELSE 5
+            END,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM recovery_options ro
+                    WHERE ro.exception_id = e.exception_id
+                      AND ro.feasible = 1
+                ) THEN 0
+                ELSE 1
             END,
             e.detected_at
         LIMIT 100
