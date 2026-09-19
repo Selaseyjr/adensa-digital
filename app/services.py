@@ -49,6 +49,9 @@ from app.repositories import shipments_repo
 from app.simulation import create_simulated_arrival
 from app.workflow_engine import (
     REJECTED,
+    APPROVED,
+    EXECUTED,
+    PENDING_APPROVAL,
     approve_action,
     reject_action,
     generate_workflow_actions,
@@ -1088,3 +1091,115 @@ def run_data_arrival_simulation(connection):
     """
 
     return create_simulated_arrival(connection)
+
+
+# ==================================================
+# CONTROL-TOWER SUMMARY
+# ==================================================
+
+def get_control_tower_summary(
+    connection,
+    resolved_limit=10,
+):
+    """
+    Compose the operational control-tower projection: the
+    at-a-glance state of the open exception population and
+    the most recently resolved outcomes.
+
+    Aggregation/projection only:
+
+    - counts come from the existing repository reads
+      (the same reads behind the dashboard metrics and the
+      workflow-action status counts);
+    - the actionable/monitoring split is derived from the
+      feasible-option counts ALREADY carried by the inbox
+      rows (get_exception_inbox) — feasibility is never
+      recomputed here;
+    - a resolved exception's path is reported only where
+      recorded evidence establishes it: an executed recovery
+      action for the exception (system-resolved) or a manual
+      intervention record (manually resolved). Without such
+      evidence the neutral "Resolved" is reported.
+
+    Does not replace get_dashboard_metrics (the external
+    API contract); this is the richer internal view the
+    control-tower UI renders.
+    """
+
+    inbox = get_exception_inbox(connection)
+
+    actionable = sum(
+        1
+        for row in inbox
+        if row["feasible_option_count"] > 0
+    )
+
+    recently_resolved = [
+        dict(row)
+        for row in exceptions_repo.get_recently_resolved_exceptions(
+            connection,
+            resolved_limit,
+        )
+    ]
+
+    for resolved in recently_resolved:
+
+        exception_id = resolved["exception_id"]
+
+        actions = recovery_actions_repo.get_actions_for_exception(
+            connection,
+            exception_id,
+        )
+
+        if any(
+            action["status"] == EXECUTED
+            for action in actions
+        ):
+
+            resolved["resolution_path"] = (
+                "System-executed recovery"
+            )
+
+            continue
+
+        interventions = (
+            manual_interventions_repo
+            .get_interventions_for_exception(
+                connection,
+                exception_id,
+            )
+        )
+
+        if interventions:
+
+            resolved["resolution_path"] = (
+                "Manually resolved"
+            )
+
+        else:
+
+            resolved["resolution_path"] = "Resolved"
+
+    return {
+        "open_exceptions":
+            exceptions_repo.count_open_exceptions(connection),
+        "actionable_exceptions": actionable,
+        "monitoring_exceptions": (
+            exceptions_repo.count_open_exceptions(connection)
+            - actionable
+        ),
+        "pending_approvals":
+            recovery_actions_repo.count_actions_by_status(
+                connection,
+                status=PENDING_APPROVAL,
+            ),
+        "awaiting_execution":
+            recovery_actions_repo.count_actions_by_status(
+                connection,
+                status=APPROVED,
+            ),
+        "critical_exceptions":
+            exceptions_repo
+            .count_open_critical_exceptions(connection),
+        "recently_resolved": recently_resolved,
+    }

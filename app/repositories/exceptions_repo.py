@@ -471,6 +471,40 @@ def get_next_exception_number(connection):
     return max(numbers) + 1
 
 
+def get_recently_resolved_exceptions(
+    connection,
+    limit,
+):
+    """
+    Return the most recently resolved exceptions, newest
+    resolution first, up to the supplied limit.
+
+    Additive read over the existing resolution fields: no
+    schema knowledge beyond the exceptions table, no new
+    business rules, read-only.
+    """
+
+    cursor = connection.cursor()
+
+    exceptions = cursor.execute(
+        """
+        SELECT
+            exception_id,
+            exception_type,
+            severity,
+            resolution_status,
+            resolved_at
+        FROM exceptions
+        WHERE resolution_status = 'Resolved'
+        ORDER BY resolved_at DESC, exception_id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+    return exceptions
+
+
 def get_exception_lifecycle(
     connection,
     exception_id,

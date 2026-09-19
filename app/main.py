@@ -274,37 +274,57 @@ def main():
         st.divider()
 
         # --------------------------------------------------
-        # KPI DATA
+        # CONTROL-TOWER SUMMARY
         # --------------------------------------------------
 
-        metrics = services.get_dashboard_metrics(
+        summary = services.get_control_tower_summary(
             connection,
         )
 
-        open_exceptions = metrics["open_exceptions"]
-
-        critical_exceptions = metrics["critical_exceptions"]
-
-        pending_approvals = metrics["pending_approvals"]
-
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             st.metric(
                 "Open Exceptions",
-                open_exceptions,
+                summary["open_exceptions"],
             )
 
         with col2:
             st.metric(
-                "Critical Exceptions",
-                critical_exceptions,
+                "Actionable",
+                summary["actionable_exceptions"],
             )
 
         with col3:
             st.metric(
-                "Pending Approvals",
-                pending_approvals,
+                "Monitoring",
+                summary["monitoring_exceptions"],
+            )
+
+        with col4:
+            st.metric(
+                "Pending Decisions",
+                summary["pending_approvals"],
+            )
+
+        col5, col6, col7 = st.columns(3)
+
+        with col5:
+            st.metric(
+                "Awaiting Execution",
+                summary["awaiting_execution"],
+            )
+
+        with col6:
+            st.metric(
+                "Critical Open",
+                summary["critical_exceptions"],
+            )
+
+        with col7:
+            st.metric(
+                "Recently Resolved",
+                len(summary["recently_resolved"]),
             )
 
         st.divider()
@@ -407,6 +427,54 @@ def main():
                 st.error(
                     outcome["message"]
                 )
+
+            st.divider()
+
+        # --------------------------------------------------
+        # RECENTLY RESOLVED
+        # --------------------------------------------------
+
+        recently_resolved = summary["recently_resolved"]
+
+        if recently_resolved:
+
+            st.header("Recently Resolved")
+
+            resolved_rows = []
+
+            for resolved in recently_resolved:
+
+                resolved_rows.append(
+                    {
+                        "Exception": (
+                            resolved["exception_id"]
+                        ),
+                        "Type": (
+                            resolved["exception_type"]
+                        ),
+                        "Severity": (
+                            resolved["severity"]
+                        ),
+                        "Resolution Path": (
+                            resolved["resolution_path"]
+                        ),
+                        "Resolved At": (
+                            resolved["resolved_at"]
+                        ),
+                    }
+                )
+
+            st.dataframe(
+                resolved_rows,
+                hide_index=True,
+                use_container_width=True,
+            )
+
+            st.caption(
+                "The most recent outcomes. Open an "
+                "exception's Operational History for "
+                "the full timeline."
+            )
 
             st.divider()
 
