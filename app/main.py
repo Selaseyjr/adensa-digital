@@ -70,6 +70,9 @@ def main():
     if "focus_exception_id" not in st.session_state:
         st.session_state.focus_exception_id = None
 
+    if "last_manual_resolution" not in st.session_state:
+        st.session_state.last_manual_resolution = None
+
     # --------------------------------------------------
     # DATABASE CONNECTION
     # --------------------------------------------------
@@ -168,6 +171,18 @@ def main():
                             new_exception_ids[0]
                         )
 
+            if st.session_state.last_manual_resolution:
+
+                manual_resolution = (
+                    st.session_state.last_manual_resolution
+                )
+
+                st.success(
+                    f"{manual_resolution['intervention_id']} recorded · "
+                    f"{manual_resolution['intervention_type']} · "
+                    f"{manual_resolution['outcome']}"
+                )
+
         # --------------------------------------------------
         # HEADER
         # --------------------------------------------------
@@ -178,6 +193,83 @@ def main():
         st.caption(
             "Detect → Analyze → Recommend → Approve → Execute → Resolve"
         )
+
+        if st.session_state.last_manual_resolution:
+
+            manual_resolution = (
+                st.session_state.last_manual_resolution
+            )
+
+            st.success(
+                f"**Manual resolution recorded** — "
+                f"{manual_resolution['intervention_id']} · "
+                f"{manual_resolution['intervention_type']}"
+            )
+
+            banner_col1, banner_col2, banner_col3 = st.columns(3)
+
+            with banner_col1:
+
+                st.write(
+                    f"**External party:** "
+                    f"{manual_resolution['external_party']}"
+                )
+
+                st.write(
+                    f"**Resolution:** "
+                    f"{manual_resolution['resolution_summary']}"
+                )
+
+                st.write(
+                    f"**Outcome:** "
+                    f"{manual_resolution['outcome']}"
+                )
+
+            with banner_col2:
+
+                if manual_resolution[
+                    "new_expected_delivery"
+                ]:
+
+                    st.write(
+                        f"**New expected delivery:** "
+                        f"{manual_resolution['new_expected_delivery']}"
+                    )
+
+                if manual_resolution["notes"]:
+
+                    st.write(
+                        f"**Notes:** "
+                        f"{manual_resolution['notes']}"
+                    )
+
+            with banner_col3:
+
+                st.write(
+                    f"**Recorded by:** "
+                    f"{manual_resolution['recorded_by']}"
+                )
+
+                st.write(
+                    f"**Recorded at:** "
+                    f"{manual_resolution['recorded_at']}"
+                )
+
+            if (
+                manual_resolution["exception_status"]
+                == "Resolved"
+            ):
+
+                st.info(
+                    "Resolved through manual intervention."
+                )
+
+            else:
+
+                st.warning(
+                    "The intervention was recorded; the "
+                    "exception remains open and monitored."
+                )
 
         st.divider()
 
@@ -597,6 +689,174 @@ def main():
             st.caption(
                 "This exception remains open and is monitored."
             )
+
+            # --------------------------------------------------
+            # MANUAL RESOLUTION (HUMAN-DRIVEN RECOVERY)
+            # --------------------------------------------------
+
+            st.subheader("Human Intervention")
+
+            st.write(
+                "No system recovery option currently satisfies "
+                "the operational constraints. If the planner "
+                "resolved the issue externally, the outcome "
+                "can be recorded here."
+            )
+
+            interventions = services.get_manual_interventions(
+                connection,
+                selected_exception_id,
+            )
+
+            if interventions:
+
+                st.caption(
+                    "Recorded interventions"
+                )
+
+                for intervention in interventions:
+
+                    with st.expander(
+                        f"{intervention['intervention_id']} — "
+                        f"{intervention['intervention_type']}"
+                    ):
+
+                        st.write(
+                            f"**External party:** "
+                            f"{intervention['external_party']}"
+                        )
+
+                        st.write(
+                            f"**Resolution:** "
+                            f"{intervention['resolution_summary']}"
+                        )
+
+                        if intervention[
+                            "new_expected_delivery"
+                        ]:
+
+                            st.write(
+                                f"**New expected delivery:** "
+                                f"{intervention['new_expected_delivery']}"
+                            )
+
+                        st.write(
+                            f"**Outcome:** "
+                            f"{intervention['outcome']}"
+                        )
+
+                        if intervention["notes"]:
+
+                            st.write(
+                                f"**Notes:** "
+                                f"{intervention['notes']}"
+                            )
+
+                        st.write(
+                            f"**Recorded by:** "
+                            f"{intervention['recorded_by']} "
+                            f"at {intervention['recorded_at']}"
+                        )
+
+                        if (
+                            intervention["outcome"]
+                            == "Resolved"
+                        ):
+
+                            st.success(
+                                "Resolved through manual "
+                                "intervention."
+                            )
+
+            with st.expander(
+                "Record Manual Resolution"
+            ):
+
+                intervention_type = st.selectbox(
+                    "Intervention method",
+                    services.INTERVENTION_TYPES,
+                    key=f"intervention_type_{selected_exception_id}",
+                )
+
+                external_party = st.text_input(
+                    "External party",
+                    key=f"intervention_party_{selected_exception_id}",
+                )
+
+                resolution_summary = st.text_area(
+                    "Agreed resolution",
+                    key=f"intervention_resolution_{selected_exception_id}",
+                )
+
+                new_expected_delivery = st.text_input(
+                    "New expected delivery (optional, YYYY-MM-DD)",
+                    key=f"intervention_eta_{selected_exception_id}",
+                )
+
+                outcome = st.selectbox(
+                    "Outcome",
+                    (
+                        "Resolved",
+                        "Still Open",
+                    ),
+                    key=f"intervention_outcome_{selected_exception_id}",
+                )
+
+                notes = st.text_area(
+                    "Notes (optional)",
+                    key=f"intervention_notes_{selected_exception_id}",
+                )
+
+                recorder = st.text_input(
+                    "Recorded by",
+                    key=f"intervention_recorder_{selected_exception_id}",
+                )
+
+                if st.button(
+                    "Save Manual Resolution",
+                    type="primary",
+                    key=f"intervention_save_{selected_exception_id}",
+                ):
+
+                    if (
+                        not external_party.strip()
+                        or not resolution_summary.strip()
+                        or not recorder.strip()
+                    ):
+
+                        st.warning(
+                            "External party, agreed resolution "
+                            "and recorder are required."
+                        )
+
+                    else:
+
+                        try:
+
+                            st.session_state.last_manual_resolution = services.record_manual_resolution(
+                                connection,
+                                selected_exception_id,
+                                intervention_type,
+                                external_party.strip(),
+                                resolution_summary.strip(),
+                                recorder.strip(),
+                                outcome,
+                                new_expected_delivery=(
+                                    new_expected_delivery.strip()
+                                    or None
+                                ),
+                                notes=(
+                                    notes.strip() or None
+                                ),
+                            )
+
+                            st.rerun()
+
+                        except RecoveryWorkflowError as error:
+
+                            st.error(
+                                f"Recording failed: {error}"
+                            )
 
         else:
 

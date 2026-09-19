@@ -116,7 +116,15 @@ def initialize_adensa():
 
     If the database is already initialized, the function
     exits without regenerating the operational dataset.
+
+    The schema initializer always runs before the
+    operational-data check: it is fully idempotent
+    (CREATE TABLE IF NOT EXISTS), so an existing database
+    gains any newly introduced tables without regenerating
+    or mutating its operational data.
     """
+
+    initialize_database()
 
     if database_contains_operational_data():
         logger.info("✓ Adensa Digital database already initialized.")

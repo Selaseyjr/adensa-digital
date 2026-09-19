@@ -347,6 +347,41 @@ def insert_exceptions(
     return cursor.rowcount
 
 
+def mark_exception_resolved(
+    connection,
+    exception_id,
+    resolved_at,
+):
+    """
+    Mark an open exception as Resolved and stamp the
+    resolution time.
+
+    The WHERE clause restricts the update to currently open
+    exceptions, mirroring the execution engine's resolution
+    update; the caller owns the transaction so this write
+    commits together with its intervention record.
+    """
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        UPDATE exceptions
+        SET
+            resolution_status = 'Resolved',
+            resolved_at = ?
+        WHERE exception_id = ?
+          AND resolution_status = 'Open'
+        """,
+        (
+            resolved_at,
+            exception_id,
+        ),
+    )
+
+    return cursor.rowcount
+
+
 def get_open_exception_ids(connection):
     """
     Return the IDs of all open exceptions ordered by

@@ -309,6 +309,28 @@ def initialize_database():
     """)
 
     # ==================================================
+    # 14. MANUAL INTERVENTIONS
+    # ==================================================
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS manual_interventions (
+            intervention_id TEXT PRIMARY KEY,
+            exception_id TEXT NOT NULL,
+            intervention_type TEXT NOT NULL,
+            external_party TEXT NOT NULL,
+            resolution_summary TEXT NOT NULL,
+            new_expected_delivery TEXT,
+            outcome TEXT NOT NULL,
+            notes TEXT,
+            recorded_by TEXT NOT NULL,
+            recorded_at TEXT NOT NULL,
+
+            FOREIGN KEY (exception_id)
+                REFERENCES exceptions(exception_id)
+        )
+    """)
+
+    # ==================================================
     # SAVE CHANGES
     # ==================================================
 

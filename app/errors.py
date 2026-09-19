@@ -35,3 +35,12 @@ class InvalidTransitionError(RecoveryWorkflowError):
     The requested workflow transition is not permitted
     from the action's current state.
     """
+
+
+class ManualInterventionNotAllowedError(RecoveryWorkflowError):
+    """
+    Manual resolution is not permitted for the exception in
+    its current state — for example when a system-generated
+    recovery action is already pending approval or approved,
+    or the exception no longer exists in an open state.
+    """
