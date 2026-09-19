@@ -467,7 +467,7 @@ def main():
             st.dataframe(
                 resolved_rows,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
             st.caption(
@@ -751,7 +751,7 @@ def main():
                 st.dataframe(
                     assessment_rows,
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             st.caption(
@@ -1042,7 +1042,7 @@ def main():
                 st.dataframe(
                     comparison_rows,
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             st.divider()
@@ -1275,7 +1275,7 @@ def main():
 
                 st.dataframe(
                     history_rows,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
