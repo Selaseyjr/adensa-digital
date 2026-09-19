@@ -1,4 +1,21 @@
+import os
 from pathlib import Path
+
+
+# ==================================================
+# API SECURITY CONFIGURATION
+# ==================================================
+
+# Prototype-grade API-key authentication for the FastAPI
+# boundary (app/api.py). The key is sourced exclusively from
+# the environment and never hard-coded, committed or logged;
+# when it is unset the mutation endpoints fail closed (503)
+# instead of silently allowing unauthenticated access.
+#
+# This is a controlled prototype mechanism, NOT a production
+# identity architecture (no OAuth, no users, no JWT).
+
+ADENSA_API_KEY = os.environ.get("ADENSA_API_KEY")
 
 
 # ==================================================

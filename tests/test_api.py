@@ -10,6 +10,14 @@ well — data/adensa.db is never touched.
 These tests verify HTTP contracts (status codes, shapes,
 error mapping), not business rules: the engines and services
 have their own suites.
+
+Mutation endpoints require a prototype API key: the
+api_client fixture provisions a throwaway test key on the
+api module and sends it as X-API-Key on every request, so
+the existing contract tests exercise the authorized path
+unchanged. Dedicated authentication tests cover the
+unauthenticated paths. The key is synthetic, exists only
+for the duration of each test and is committed nowhere.
 """
 
 import pytest
@@ -28,15 +36,33 @@ from app.workflow_engine import generate_workflow_actions
 # FIXTURES / HELPERS
 # ==================================================
 
+# Synthetic test credential: never a real secret, never
+# committed as configuration. It exists only inside the
+# test session.
+TEST_API_KEY = "test-api-key-not-a-secret"
+
+
 @pytest.fixture()
-def api_client(seeded_database):
+def api_client(seeded_database, monkeypatch):
     """
     Provide a TestClient served against the seeded temporary
     database, alongside the fixture connection for arranging
     test state.
+
+    The fixture provisions the throwaway test key on the api
+    module (the name the dependency reads) and sends it as
+    X-API-Key on every request, so the existing contract
+    tests exercise the authorized path of the mutation
+    endpoints unchanged.
     """
 
+    monkeypatch.setattr(
+        "app.api.ADENSA_API_KEY",
+        TEST_API_KEY,
+    )
+
     with TestClient(app) as client:
+        client.headers.update({"X-API-Key": TEST_API_KEY})
         yield client, seeded_database
 
 
@@ -497,3 +523,364 @@ def test_execute_closed_exception_maps_failure_outcome_to_409(
 
     assert detail.startswith("Recovery execution failed:")
     assert "already Resolved" in detail
+
+
+# ==================================================
+# AUTHENTICATION (PROTOTYPE API KEY)
+# ==================================================
+#
+# Every operational endpoint — mutations and reads alike —
+# is guarded by the shared X-API-Key dependency; only
+# /health stays public. These tests verify the documented
+# security contract: missing or wrong keys are rejected
+# before any domain logic runs, an unconfigured key fails
+# closed, and failed authentication never mutates state.
+
+MUTATION_REQUESTS = [
+    (
+        "approve",
+        "/exceptions/EXC-900002/approve",
+        {"approved_by": "Auth Test"},
+    ),
+    (
+        "reject",
+        "/exceptions/EXC-900002/reject",
+        {"rejected_by": "Auth Test"},
+    ),
+    (
+        "execute",
+        "/recovery-actions/ACT-DOES-NOT-EXIST/execute",
+        None,
+    ),
+]
+
+
+@pytest.fixture()
+def unauthenticated_client(seeded_database, monkeypatch):
+    """
+    A client whose server has a key configured but whose
+    requests carry no API key.
+    """
+
+    monkeypatch.setattr(
+        "app.api.ADENSA_API_KEY",
+        TEST_API_KEY,
+    )
+
+    with TestClient(app) as client:
+
+        yield client
+
+
+@pytest.fixture()
+def misconfigured_client(seeded_database, monkeypatch):
+    """
+    A client whose server has NO key configured: the
+    fail-closed scenario.
+    """
+
+    monkeypatch.setattr(
+        "app.api.ADENSA_API_KEY",
+        None,
+    )
+
+    with TestClient(app) as client:
+
+        yield client
+
+
+def test_mutations_reject_missing_api_key(unauthenticated_client):
+    """
+    Every mutation endpoint rejects a request without an
+    API key with a clean 401, before any domain logic.
+    """
+
+    client = unauthenticated_client
+
+    for name, path, body in MUTATION_REQUESTS:
+
+        response = (
+            client.post(path, json=body)
+            if body is not None
+            else client.post(path)
+        )
+
+        assert response.status_code == 401, name
+        assert response.json() == {"detail": "Missing API key."}
+
+
+def test_mutations_reject_incorrect_api_key(seeded_database, monkeypatch):
+    """
+    A wrong key is rejected with a generic 401 that leaks
+    neither the configured key nor the config state.
+    """
+
+    monkeypatch.setattr(
+        "app.api.ADENSA_API_KEY",
+        TEST_API_KEY,
+    )
+
+    with TestClient(app) as client:
+
+        client.headers.update({"X-API-Key": "definitely-wrong"})
+
+        for name, path, body in MUTATION_REQUESTS:
+
+            response = (
+                client.post(path, json=body)
+                if body is not None
+                else client.post(path)
+            )
+
+            assert response.status_code == 401, name
+            assert response.json() == {"detail": "Invalid API key."}
+
+
+def test_unconfigured_api_key_fails_closed(misconfigured_client):
+    """
+    With no key configured the whole operational surface —
+    mutations and reads alike — is closed (503) whether or
+    not a key is supplied: an operator who has not
+    provisioned a key never gets silent open access. Only
+    /health remains public (covered separately).
+    """
+
+    client = misconfigured_client
+
+    for name, path, body in MUTATION_REQUESTS:
+
+        unauthenticated = (
+            client.post(path, json=body)
+            if body is not None
+            else client.post(path)
+        )
+
+        assert unauthenticated.status_code == 503, name
+
+        client.headers.update({"X-API-Key": "some-key"})
+
+        authenticated = (
+            client.post(path, json=body)
+            if body is not None
+            else client.post(path)
+        )
+
+        assert authenticated.status_code == 503, name
+
+    for name in READ_ENDPOINTS:
+
+        unauthenticated = client.get(name)
+
+        assert unauthenticated.status_code == 503, name
+
+        client.headers.update({"X-API-Key": "some-key"})
+
+        authenticated = client.get(name)
+
+        assert authenticated.status_code == 503, name
+
+
+READ_ENDPOINTS = [
+    "/metrics",
+    "/exceptions",
+    "/exceptions/EXC-900002/review",
+    "/exceptions/EXC-900002/actions/latest",
+]
+
+
+def test_health_remains_public_without_key(misconfigured_client):
+    """
+    The documented policy: /health is a liveness probe
+    carrying no operational data and stays accessible
+    without a key — even with authentication unconfigured.
+    """
+
+    assert misconfigured_client.get("/health").status_code == 200
+
+
+def test_operational_reads_reject_missing_api_key(
+    unauthenticated_client,
+):
+    """
+    Every operational read endpoint rejects a keyless
+    request with a clean 401, before any domain logic.
+    """
+
+    client = unauthenticated_client
+
+    for name in READ_ENDPOINTS:
+
+        response = client.get(name)
+
+        assert response.status_code == 401, name
+        assert response.json() == {
+            "detail": "Missing API key."
+        }, name
+
+
+def test_operational_reads_reject_incorrect_api_key(
+    seeded_database,
+    monkeypatch,
+):
+    """
+    A wrong key is rejected on every operational read with
+    a generic 401 that leaks neither the configured key nor
+    the config state.
+    """
+
+    monkeypatch.setattr(
+        "app.api.ADENSA_API_KEY",
+        TEST_API_KEY,
+    )
+
+    with TestClient(app) as client:
+
+        client.headers.update({"X-API-Key": "definitely-wrong"})
+
+        for name in READ_ENDPOINTS:
+
+            response = client.get(name)
+
+            assert response.status_code == 401, name
+            assert response.json() == {
+                "detail": "Invalid API key."
+            }, name
+
+
+def test_operational_reads_succeed_with_correct_key(
+    seeded_database,
+    monkeypatch,
+):
+    """
+    With the correct key every operational read returns its
+    existing service contract.
+    """
+
+    monkeypatch.setattr(
+        "app.api.ADENSA_API_KEY",
+        TEST_API_KEY,
+    )
+
+    with TestClient(app) as client:
+
+        client.headers.update({"X-API-Key": TEST_API_KEY})
+
+        metrics = client.get("/metrics").json()
+        assert metrics == {
+            "open_exceptions": 2,
+            "critical_exceptions": 0,
+            "pending_approvals": 0,
+        }
+
+        exceptions = client.get("/exceptions").json()
+        assert isinstance(exceptions, list)
+        assert len(exceptions) == 2
+
+        review = client.get(
+            "/exceptions/EXC-900002/review"
+        ).json()
+        assert "recommendation" in review
+
+        latest_action = client.get(
+            "/exceptions/EXC-900002/actions/latest"
+        )
+        assert latest_action.status_code == 200
+        assert latest_action.json() is None
+
+
+def test_authentication_failure_does_not_mutate_database(api_client):
+    """
+    Rejected requests must leave no trace: the action stays
+    Pending Approval, counts are unchanged, and the
+    authorized path still works afterwards.
+    """
+
+    client, connection = api_client
+
+    _generate_options_and_action(connection)
+
+    before_actions = connection.execute(
+        "SELECT COUNT(*) FROM recovery_actions"
+    ).fetchone()[0]
+
+    # The api_client sends the correct key; strip it to
+    # simulate the unauthenticated attempts — mutations and
+    # reads alike.
+    saved_key = client.headers.pop("X-API-Key")
+
+    try:
+
+        for _, path, body in MUTATION_REQUESTS:
+
+            response = (
+                client.post(path, json=body)
+                if body is not None
+                else client.post(path)
+            )
+
+            assert response.status_code == 401
+
+        for name in READ_ENDPOINTS:
+
+            assert client.get(name).status_code == 401
+
+    finally:
+
+        client.headers.update({"X-API-Key": saved_key})
+
+    after_actions = connection.execute(
+        "SELECT COUNT(*) FROM recovery_actions"
+    ).fetchone()[0]
+
+    action = connection.execute(
+        """
+        SELECT status
+        FROM recovery_actions
+        WHERE exception_id = 'EXC-900002'
+        """
+    ).fetchone()
+
+    assert after_actions == before_actions
+    assert action["status"] == "Pending Approval"
+
+    # The authorized path is unaffected by the rejected
+    # attempts.
+    response = client.post(
+        "/exceptions/EXC-900002/approve",
+        json={"approved_by": "Auth Test"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_authentication_precedes_domain_error_mapping(
+    seeded_database,
+    monkeypatch,
+):
+    """
+    A wrong key yields 401 even for a nonexistent action or
+    exception: authentication sits in front of routing and
+    domain validation, while correctly authenticated
+    requests keep the existing 404/409 error mapping.
+    """
+
+    monkeypatch.setattr(
+        "app.api.ADENSA_API_KEY",
+        TEST_API_KEY,
+    )
+
+    with TestClient(app) as client:
+
+        client.headers.update({"X-API-Key": "definitely-wrong"})
+
+        response = client.post(
+            "/recovery-actions/ACT-DOES-NOT-EXIST/execute",
+        )
+
+        assert response.status_code == 401
+
+        response = client.get(
+            "/exceptions/EXC-DOES-NOT-EXIST/review",
+        )
+
+        assert response.status_code == 401

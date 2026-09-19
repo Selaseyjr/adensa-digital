@@ -24,13 +24,23 @@ Rules kept by this boundary:
   verbatim (sqlite3.Row values converted to dicts); Pydantic
   models are used only where they add a meaningful contract
   (/health, /metrics).
+- API-key authentication (X-API-Key header, sourced from
+  configuration) guards every operational endpoint: all
+  three mutations and all operational reads. Only /health —
+  a liveness probe carrying no operational data — stays
+  public. The key is never logged and never appears in
+  error responses.
 """
 
-from fastapi import Depends, FastAPI, HTTPException
+import secrets
+
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from app import services
+from app.config import ADENSA_API_KEY
 from app.database import get_connection
 from app.errors import (
     ActionNotFoundError,
@@ -40,6 +50,66 @@ from app.errors import (
 
 
 app = FastAPI(title="Adensa Digital API")
+
+
+# ==================================================
+# API-KEY AUTHENTICATION (prototype boundary security)
+# ==================================================
+
+# Standard header-based key mechanism. The key itself lives
+# only in configuration/environment: it is never hard-coded,
+# never returned in any response and never logged.
+
+_api_key_header = APIKeyHeader(
+    name="X-API-Key",
+    auto_error=False,
+    description="Prototype API key for mutation endpoints.",
+)
+
+
+def require_api_key(
+    supplied_key: str = Depends(_api_key_header),
+):
+    """
+    Guard the mutation endpoints.
+
+    - a missing header -> 401;
+    - a wrong key -> 401 (constant-time comparison, generic
+      message: neither the configured key nor the config
+      state is leaked);
+    - an unconfigured key -> 503 fail-closed: an operator who
+      has not provisioned a key gets an explicit signal,
+      never silent unauthenticated mutation access.
+    """
+
+    if ADENSA_API_KEY is None:
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Mutation API is not configured for "
+                "external access."
+            ),
+        )
+
+    if supplied_key is None:
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing API key.",
+        )
+
+    if not secrets.compare_digest(
+        supplied_key,
+        ADENSA_API_KEY,
+    ):
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key.",
+        )
+
+    return supplied_key
 
 
 # ==================================================
@@ -142,6 +212,7 @@ def read_health():
 )
 def read_metrics(
     connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
 ):
     """Dashboard KPI counts."""
 
@@ -151,6 +222,7 @@ def read_metrics(
 @app.get("/exceptions")
 def list_exceptions(
     connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
 ):
     """Open-exception inbox with shipment and order context."""
 
@@ -163,6 +235,7 @@ def list_exceptions(
 def read_exception_review(
     exception_id: str,
     connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
 ):
     """
     Decision-engine review for an exception. A missing
@@ -189,6 +262,7 @@ def read_exception_review(
 def read_latest_action(
     exception_id: str,
     connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
 ):
     """
     Most recent recovery action for an exception, or a null
@@ -241,6 +315,7 @@ def approve_exception(
     exception_id: str,
     request: ApproveRequest,
     connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
 ):
     """
     Approve the latest recovery action of an exception.
@@ -267,6 +342,7 @@ def reject_exception(
     exception_id: str,
     request: RejectRequest,
     connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
 ):
     """
     Reject the latest recovery action of an exception.
@@ -292,6 +368,7 @@ def reject_exception(
 def execute_recovery_action_endpoint(
     action_id: str,
     connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
 ):
     """
     Execute an approved recovery action. A structured
