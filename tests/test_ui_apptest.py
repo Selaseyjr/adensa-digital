@@ -759,3 +759,103 @@ def test_recently_resolved_survives_resolution():
 
     finally:
         tmp.cleanup()
+
+
+# ==================================================
+# CHECKPOINT R — HISTORY TRACEABILITY IN THE UI
+# ==================================================
+
+def test_history_visible_for_monitoring_exception():
+    """
+    The Operational History section renders for every
+    investigated exception — including one with no feasible
+    recovery (the Human Intervention branch) — so the
+    planner can trace it too.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=False)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        _select_exception(app_test, "EXC-900001")
+
+        headers = _text_values(app_test.header)
+
+        assert "Operational History" in headers
+
+        history_table = [
+            frame.value
+            for frame in app_test.dataframe
+            if "Event" in frame.value.columns
+        ][0]
+
+        events = history_table["Event"].tolist()
+
+        # Persisted events, not fabricated ones: detection
+        # is recorded; no options, decision or execution
+        # ever happened for this exception.
+        assert "Exception detected" in events
+        assert "Recommendation generated" not in events
+        assert "Recovery executed" not in events
+        assert events[-1] == "Exception still open"
+
+    finally:
+        tmp.cleanup()
+
+
+def test_history_shows_executed_still_open_honestly():
+    """
+    After the real UI workflow executes a recovery that
+    cannot fix the delivery date, the rendered history
+    contains the execution AND the still-open outcome —
+    with the persisted ETA evidence — and never a resolved
+    label.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        _select_exception(app_test, "EXC-900002")
+
+        _widget(app_test, "text_input", "approver_").set_value(
+            "Trace Planner"
+        )
+        _widget(app_test, "button", "approve_").click().run()
+        _widget(app_test, "button", "execute_").click().run()
+
+        assert not app_test.exception
+
+        history_table = [
+            frame.value
+            for frame in app_test.dataframe
+            if "Event" in frame.value.columns
+        ][0]
+
+        events = history_table["Event"].tolist()
+
+        assert events == [
+            "Exception detected",
+            "Recovery options evaluated",
+            "Recommendation generated",
+            "Recovery approved",
+            "Recovery executed",
+            "Exception still open",
+        ]
+
+        outcome_detail = history_table["Detail"].tolist()[-1]
+
+        # The still-open outcome carries the persisted
+        # evidence: recorded arrival vs required delivery.
+        assert "still misses required delivery" in outcome_detail
+
+        # Chronological display order matches the persisted
+        # story — execution precedes the outcome.
+        assert events.index("Recovery executed") < events.index(
+            "Exception still open"
+        )
+
+    finally:
+        tmp.cleanup()

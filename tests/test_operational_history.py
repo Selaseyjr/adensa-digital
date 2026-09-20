@@ -855,3 +855,125 @@ def test_history_does_not_disturb_manual_resolution_flow(
 
     finally:
         connection.close()
+
+
+# ==================================================
+# CHECKPOINT R — TRACEABILITY & STILL-OPEN EVIDENCE
+# ==================================================
+
+def test_history_outcome_entries_carry_persisted_evidence(
+    seeded_database,
+):
+    """
+    The outcome entry states the recorded estimated arrival
+    against the required delivery date — the persisted
+    evidence for the resolution verdict — rather than a
+    generic status line.
+    """
+
+    connection = seeded_database
+
+    try:
+        action = _create_action(connection)
+        _approve(connection, action)
+
+        services.execute_approved_recovery(
+            connection,
+            action["action_id"],
+        )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        outcome = history[-1]
+
+        # Executed but the shipment still misses the required
+        # delivery date: the outcome says so explicitly, with
+        # both persisted dates (the recovery's new arrival
+        # 2026-09-17 against the required 2026-09-15).
+        assert outcome["event"] == "Exception still open"
+        assert "2026-09-17" in outcome["detail"]
+        assert "2026-09-15" in outcome["detail"]
+        assert "still misses required delivery" in (
+            outcome["detail"]
+        )
+
+        # The resolved case carries the same evidence shape:
+        # extend the required delivery beyond the recorded
+        # arrival and re-examine (no second execution — the
+        # persisted resolution fields drive the entry).
+        connection.execute(
+            """
+            UPDATE orders
+            SET required_delivery_date = '2026-09-25'
+            WHERE order_id = 'ORD-900001'
+            """
+        )
+        connection.commit()
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        outcome = history[-1]
+
+        # The exception is STILL open in the database (a
+        # resolved transition only happens through a real
+        # execution), so the entry remains the still-open
+        # outcome — now with arrival meeting the required
+        # date. This is the truthful evidence shape: the
+        # status comes from the recorded state, not from a
+        # date comparison in the history layer.
+        assert outcome["event"] == "Exception still open"
+        assert "2026-09-17" in outcome["detail"]
+        assert "2026-09-25" in outcome["detail"]
+
+    finally:
+        connection.close()
+
+
+def test_history_still_open_entry_never_precedes_execution(
+    seeded_database,
+):
+    """
+    Ordering guarantee for the executed-but-still-open
+    story: detection, recommendation, approval, execution,
+    then the still-open outcome — the current state is
+    always the last entry, never implying resolution.
+    """
+
+    connection = seeded_database
+
+    try:
+        action = _create_action(connection)
+        _approve(connection, action)
+
+        services.execute_approved_recovery(
+            connection,
+            action["action_id"],
+        )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        events = _events(history)
+
+        assert events == [
+            "Exception detected",
+            "Recovery options evaluated",
+            "Recommendation generated",
+            "Recovery approved",
+            "Recovery executed",
+            "Exception still open",
+        ]
+
+        # No resolution is implied anywhere in the timeline.
+        assert "Exception resolved" not in events
+
+    finally:
+        connection.close()

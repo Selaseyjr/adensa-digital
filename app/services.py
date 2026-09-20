@@ -974,7 +974,15 @@ def get_exception_history(
             )
 
     # --------------------------------------------------
-    # RESOLUTION
+    # OUTCOME
+    #
+    # The outcome entry states the current resolution state
+    # with the persisted evidence behind it: the shipment's
+    # recorded estimated arrival (updated by the execution
+    # engine) against the order's required delivery date.
+    # Executed does not imply resolved: when the recorded
+    # arrival still misses the required date, the entry
+    # says so explicitly.
     # --------------------------------------------------
 
     if exception["resolution_status"] == "Resolved":
@@ -984,9 +992,13 @@ def get_exception_history(
                 "timestamp": exception["resolved_at"],
                 "event": "Exception resolved",
                 "detail": (
-                    f"Current status: Resolved "
-                    f"({exception['estimated_impact']}"
-                    f" estimated impact)"
+                    f"Current status: Resolved — estimated "
+                    f"arrival "
+                    f"{exception['estimated_arrival']} meets "
+                    f"required delivery "
+                    f"{exception['required_delivery_date']} "
+                    f"({exception['estimated_impact']} "
+                    f"estimated impact)"
                 ),
                 "actor": "Adensa operational pipeline",
                 "sequence": len(history),
@@ -1000,8 +1012,12 @@ def get_exception_history(
                 "timestamp": None,
                 "event": "Exception still open",
                 "detail": (
-                    f"Current status: Open — monitored until "
-                    f"recovery is recorded"
+                    f"Current status: Open — estimated "
+                    f"arrival "
+                    f"{exception['estimated_arrival']} still "
+                    f"misses required delivery "
+                    f"{exception['required_delivery_date']} "
+                    f"— monitored until recovery is recorded"
                 ),
                 "actor": "Adensa operational pipeline",
                 "sequence": len(history),

@@ -538,17 +538,27 @@ def get_exception_lifecycle(
     exception = cursor.execute(
         """
         SELECT
-            exception_id,
-            shipment_id,
-            exception_type,
-            severity,
-            description,
-            estimated_impact,
-            detected_at,
-            resolution_status,
-            resolved_at
-        FROM exceptions
-        WHERE exception_id = ?
+            e.exception_id,
+            e.shipment_id,
+            e.exception_type,
+            e.severity,
+            e.description,
+            e.estimated_impact,
+            e.detected_at,
+            e.resolution_status,
+            e.resolved_at,
+
+            s.estimated_arrival,
+            o.required_delivery_date
+        FROM exceptions e
+
+        JOIN shipments s
+            ON e.shipment_id = s.shipment_id
+
+        JOIN orders o
+            ON s.order_id = o.order_id
+
+        WHERE e.exception_id = ?
         """,
         (exception_id,),
     ).fetchone()
