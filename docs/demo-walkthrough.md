@@ -351,12 +351,20 @@ Microsoft 365 / Power Automate tenant flow is **not yet deployed**.
 
 ## 8. A note on the control-tower counts
 
-The control tower's **Open**, **Pending Decisions**, **Awaiting
-Execution**, **Critical Open** and **Recently Resolved** figures are
-full-population counts. The **Actionable** and **Monitoring** figures
-describe the bounded inbox work-queue surface (the first 100 rows the
-planner can actually see and act on), not the entire open population
-— on a large dataset the total actionable population is larger than
-the inbox can display. The distinction is deliberate and documented in
-the service layer; reconciling those two counts is a known future
-improvement.
+Every control-tower figure has a defined population, also stated in
+the UI's metric tooltips:
+
+- **Open Exceptions, Pending Decisions, Awaiting Execution, Critical
+  Open** are full-population counts over the entire operational
+  database.
+- **Actionable** and **Monitoring** are bounded inbox work-queue
+  surface metrics: together they partition the visible Exception
+  Inbox queue (actionable = rows with a feasible recovery option,
+  monitoring = rows without). They deliberately do not describe the
+  entire open population — on a large dataset the total actionable
+  population is larger than the inbox can display.
+- **Recently Resolved** shows the most recent resolutions (bounded
+  view, newest first), not every historical resolution.
+
+This distinction is enforced in the service layer and protected by
+dedicated tests.

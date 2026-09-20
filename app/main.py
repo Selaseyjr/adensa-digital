@@ -287,24 +287,43 @@ def main():
             st.metric(
                 "Open Exceptions",
                 summary["open_exceptions"],
+                help=(
+                    "All open exceptions in the operational "
+                    "database."
+                ),
             )
 
         with col2:
             st.metric(
                 "Actionable",
                 summary["actionable_exceptions"],
+                help=(
+                    "Open exceptions with a feasible recovery "
+                    "option, within the Exception Inbox work "
+                    "queue (bounded surface — not the entire "
+                    "open population)."
+                ),
             )
 
         with col3:
             st.metric(
                 "Monitoring",
                 summary["monitoring_exceptions"],
+                help=(
+                    "Inbox work-queue exceptions without a "
+                    "feasible recovery option (bounded surface "
+                    "— not the entire open population)."
+                ),
             )
 
         with col4:
             st.metric(
                 "Pending Decisions",
                 summary["pending_approvals"],
+                help=(
+                    "Recovery actions awaiting a planner "
+                    "approval or rejection decision."
+                ),
             )
 
         col5, col6, col7 = st.columns(3)
@@ -313,18 +332,29 @@ def main():
             st.metric(
                 "Awaiting Execution",
                 summary["awaiting_execution"],
+                help=(
+                    "Approved recovery actions not yet executed."
+                ),
             )
 
         with col6:
             st.metric(
                 "Critical Open",
                 summary["critical_exceptions"],
+                help=(
+                    "Open exceptions with Critical severity, "
+                    "across the entire open population."
+                ),
             )
 
         with col7:
             st.metric(
                 "Recently Resolved",
                 len(summary["recently_resolved"]),
+                help=(
+                    "Most recent resolutions shown below "
+                    "(bounded view)."
+                ),
             )
 
         st.divider()
@@ -471,9 +501,9 @@ def main():
             )
 
             st.caption(
-                "The most recent outcomes. Open an "
-                "exception's Operational History for "
-                "the full timeline."
+                "The most recent outcomes (bounded view, newest "
+                "first). Open an exception's Operational "
+                "History for the full timeline."
             )
 
             st.divider()
@@ -483,6 +513,13 @@ def main():
         # --------------------------------------------------
 
         st.header("Exception Inbox")
+
+        st.caption(
+            "Bounded operational work queue (newest actionable "
+            "work first) — the Actionable and Monitoring "
+            "counts above describe this surface, not the full "
+            "open population."
+        )
 
         exceptions = services.get_exception_inbox(
             connection,

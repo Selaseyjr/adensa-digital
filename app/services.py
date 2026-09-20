@@ -1114,7 +1114,10 @@ def get_control_tower_summary(
     - the actionable/monitoring split is derived from the
       feasible-option counts ALREADY carried by the inbox
       rows (get_exception_inbox) — feasibility is never
-      recomputed here;
+      recomputed here. The two counts partition the BOUNDED
+      inbox work-queue surface (actionable + monitoring =
+      the visible inbox row count), not the full open
+      population behind the inbox cap;
     - a resolved exception's path is reported only where
       recorded evidence establishes it: an executed recovery
       action for the exception (system-resolved) or a manual
@@ -1128,15 +1131,23 @@ def get_control_tower_summary(
 
     inbox = get_exception_inbox(connection)
 
-    # The inbox is the bounded operational-work surface;
-    # these counts describe the population the planner can
-    # actually discover and act on, not the full open set
-    # behind the inbox cap.
+    # The inbox is the bounded operational-work surface
+    # (the first rows of the open-exception work queue), so
+    # these two counts describe the population the planner
+    # can actually discover and act on — NOT the full open
+    # population behind the inbox cap. They partition the
+    # visible queue: actionable rows (feasible recovery
+    # available) + monitoring rows (no feasible recovery)
+    # = the inbox row count. Both split numbers come from
+    # the feasible-option counts ALREADY carried by the
+    # inbox rows; feasibility is never recomputed here.
     actionable = sum(
         1
         for row in inbox
         if row["feasible_option_count"] > 0
     )
+
+    monitoring = len(inbox) - actionable
 
     recently_resolved = [
         dict(row)
@@ -1188,10 +1199,7 @@ def get_control_tower_summary(
         "open_exceptions":
             exceptions_repo.count_open_exceptions(connection),
         "actionable_exceptions": actionable,
-        "monitoring_exceptions": (
-            exceptions_repo.count_open_exceptions(connection)
-            - actionable
-        ),
+        "monitoring_exceptions": monitoring,
         "pending_approvals":
             recovery_actions_repo.count_actions_by_status(
                 connection,

@@ -475,3 +475,159 @@ def test_manual_intervention_row_without_resolution_not_listed(
 
     finally:
         connection.close()
+
+
+# ==================================================
+# E. KPI POPULATION SEMANTICS (Checkpoint P)
+# ==================================================
+
+def test_actionable_and_monitoring_partition_the_inbox_surface(
+    seeded_database,
+):
+    """
+    Actionable and Monitoring are bounded inbox work-queue
+    surface metrics: they partition the visible inbox rows
+    (actionable + monitoring = inbox row count), whatever
+    the open population behind the cap is. They must not be
+    presented as a full-population split.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        # Push the open population past the inbox cap with
+        # non-actionable (monitoring) rows, while only the
+        # fixture exception is actionable — so the surface
+        # counts and the full-population split diverge.
+        rows = []
+
+        for index in range(1, 121):
+
+            rows.append(
+                (
+                    f"EXC-920{index:03d}",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Low",
+                    "2026-09-01 12:00:00",
+                    f"Surface semantics fixture {index}",
+                    100,
+                    "Open",
+                    None,
+                ),
+            )
+
+        exceptions_repo.insert_exceptions(connection, rows)
+        connection.commit()
+
+        summary = services.get_control_tower_summary(connection)
+        inbox = services.get_exception_inbox(connection)
+
+        # Both counts describe the same bounded surface.
+        assert summary["actionable_exceptions"] == 1
+        assert summary["monitoring_exceptions"] == (
+            len(inbox) - 1
+        )
+        assert (
+            summary["actionable_exceptions"]
+            + summary["monitoring_exceptions"]
+            == len(inbox)
+        )
+
+        # ...and the split never claims the full population:
+        # open_exceptions deliberately exceeds the surface
+        # the two counts describe.
+        assert summary["open_exceptions"] == 122
+        assert summary["open_exceptions"] > len(inbox)
+
+        # The cap truncates the open population: the inbox
+        # holds 100 rows (1 actionable + 99 monitoring),
+        # while 121 open exceptions actually have no
+        # feasible recovery. The surface count must stay a
+        # surface count — never silently become the true
+        # full-population number.
+        assert len(inbox) == 100
+        assert summary["actionable_exceptions"] == 1
+        assert summary["monitoring_exceptions"] == 99
+
+        true_monitoring = connection.execute(
+            """
+            SELECT COUNT(*) FROM exceptions e
+            WHERE e.resolution_status = 'Open'
+              AND NOT EXISTS (
+                  SELECT 1 FROM recovery_options ro
+                  WHERE ro.exception_id = e.exception_id
+                    AND ro.feasible = 1
+              )
+            """
+        ).fetchone()[0]
+
+        assert true_monitoring == 121
+        assert summary["monitoring_exceptions"] != true_monitoring
+
+    finally:
+        connection.close()
+
+
+def test_other_control_tower_counts_are_full_population(
+    seeded_database,
+):
+    """
+    Open Exceptions, Pending Decisions, Awaiting Execution
+    and Critical Open are full-population counts: they are
+    independent of the inbox cap and count the entire open
+    population / all actions of the given status.
+    """
+
+    connection = seeded_database
+
+    try:
+        _create_action(connection)
+
+        # Open exceptions far beyond any inbox surface.
+        rows = []
+
+        for index in range(1, 61):
+
+            rows.append(
+                (
+                    f"EXC-930{index:03d}",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Critical",
+                    "2026-09-01 12:00:00",
+                    f"Full-population fixture {index}",
+                    100,
+                    "Open",
+                    None,
+                ),
+            )
+
+        exceptions_repo.insert_exceptions(connection, rows)
+        connection.commit()
+
+        summary = services.get_control_tower_summary(connection)
+
+        true_open = connection.execute(
+            "SELECT COUNT(*) FROM exceptions "
+            "WHERE resolution_status = 'Open'"
+        ).fetchone()[0]
+        true_critical = connection.execute(
+            "SELECT COUNT(*) FROM exceptions "
+            "WHERE resolution_status = 'Open' "
+            "AND severity = 'Critical'"
+        ).fetchone()[0]
+        true_pending = connection.execute(
+            "SELECT COUNT(*) FROM recovery_actions "
+            "WHERE status = 'Pending Approval'"
+        ).fetchone()[0]
+
+        assert summary["open_exceptions"] == true_open
+        assert summary["critical_exceptions"] == true_critical
+        assert summary["critical_exceptions"] >= 60
+        assert summary["pending_approvals"] == true_pending == 1
+
+    finally:
+        connection.close()
