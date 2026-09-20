@@ -444,7 +444,9 @@ def get_exception_context(
     Projects the existing shared context read into an
     application-facing structure for the UI and any other
     client. Contains no business rules: every field is
-    retrieved operational data.
+    retrieved operational data, including the recorded
+    detection description (what happened) and the current
+    resolution status.
     """
 
     context = exceptions_repo.get_exception_operational_context(
@@ -463,6 +465,8 @@ def get_exception_context(
         "customer_name": context["customer_name"],
         "exception_type": context["exception_type"],
         "severity": context["severity"],
+        "status": context["resolution_status"],
+        "description": context["description"],
         "priority": context["priority"],
         "origin": context["origin"],
         "destination": context["destination"],

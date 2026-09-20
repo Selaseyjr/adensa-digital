@@ -640,6 +640,13 @@ def main():
                 f"({context['customer_id']})"
             )
 
+            # The recorded operational issue, exactly as the
+            # detection pipeline persisted it.
+            st.info(
+                f"**{context['exception_type']}** — "
+                f"{context['description']}"
+            )
+
         # --------------------------------------------------
         # EXCEPTION DETAILS
         # --------------------------------------------------
@@ -1070,6 +1077,18 @@ def main():
                             "Risk": (
                                 f"{option['risk_score']:.0f}"
                             ),
+                            "Cost fit": (
+                                f"{option['cost_score']:.0f}"
+                            ),
+                            "Transit fit": (
+                                f"{option['transit_score']:.0f}"
+                            ),
+                            "Risk fit": (
+                                f"{option['risk_component']:.0f}"
+                            ),
+                            "Priority fit": (
+                                f"{option['priority_score']:.0f}"
+                            ),
                             "Score": (
                                 f"{option['decision_score']:.2f}"
                             ),
@@ -1080,6 +1099,14 @@ def main():
                     comparison_rows,
                     hide_index=True,
                     width="stretch",
+                )
+
+                st.caption(
+                    "Factor scores (0–100: higher is better) come "
+                    "from the decision engine's benchmarks; the "
+                    "decision score is their weighted combination "
+                    "(cost 0.25, transit 0.30, risk 0.25, priority "
+                    "0.20)."
                 )
 
             st.divider()
@@ -1131,6 +1158,12 @@ def main():
                 # --------------------------------------------------
 
                 if action["status"] == PENDING_APPROVAL:
+
+                    st.info(
+                        "Decision required: approve to enable "
+                        "execution, or reject to close this "
+                        "recovery option."
+                    )
 
                     approver_name = st.text_input(
                         "Approver name",

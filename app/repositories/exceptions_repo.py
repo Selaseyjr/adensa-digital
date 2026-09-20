@@ -208,6 +208,7 @@ def get_exception_operational_context(
             e.exception_type,
             e.severity,
             e.resolution_status,
+            e.description,
 
             s.order_id,
             s.transport_mode,

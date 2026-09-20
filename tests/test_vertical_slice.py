@@ -70,6 +70,14 @@ def test_get_exception_context_returns_investigation_fields(
             == "2026-09-15"
         )
 
+        # Checkpoint Q: the investigation projection surfaces
+        # the recorded issue and the current status — the
+        # "what happened" fields a planner reads first.
+        assert context["description"] == (
+            "Fixture exception: five days late"
+        )
+        assert context["status"] == "Open"
+
     finally:
         connection.close()
 

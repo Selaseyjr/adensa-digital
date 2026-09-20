@@ -282,6 +282,45 @@ def test_actionable_exception_renders_recommendation():
         # The recommendation and the ranked alternatives.
         assert len(app_test.dataframe) == 2
 
+        # Checkpoint Q: the investigation view opens with the
+        # recorded issue and shows the decision factors.
+        issue_notes = [
+            note.value
+            for note in app_test.info
+            if "five days late" in (note.value or "")
+        ]
+        assert issue_notes, (
+            "the recorded exception issue must be surfaced"
+        )
+
+        assert any(
+            "Decision required" in (info.value or "")
+            for info in app_test.info
+        ), "the pending state must state the next action"
+
+        comparison_table = [
+            frame.value
+            for frame in app_test.dataframe
+            if "Option" in frame.value.columns
+        ][0]
+
+        # The engine's per-option factor scores are shown
+        # alongside the raw option data, so the planner can
+        # see WHY the recommendation wins — without the UI
+        # recomputing anything.
+        for factor_column in (
+            "Cost fit",
+            "Transit fit",
+            "Risk fit",
+            "Priority fit",
+            "Score",
+        ):
+            assert factor_column in comparison_table.columns
+
+        verdicts = comparison_table["Option"].tolist()
+        assert verdicts[0] == "Recommended"
+        assert "Alternative" in verdicts
+
         assert _widget(
             app_test, "text_input", "approver_"
         ) is not None
