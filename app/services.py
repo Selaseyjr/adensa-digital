@@ -1128,6 +1128,10 @@ def get_control_tower_summary(
 
     inbox = get_exception_inbox(connection)
 
+    # The inbox is the bounded operational-work surface;
+    # these counts describe the population the planner can
+    # actually discover and act on, not the full open set
+    # behind the inbox cap.
     actionable = sum(
         1
         for row in inbox

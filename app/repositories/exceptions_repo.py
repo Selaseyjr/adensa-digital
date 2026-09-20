@@ -79,8 +79,29 @@ def count_open_critical_exceptions(connection):
 def get_open_exceptions_inbox(connection):
     """
     Return the open exceptions for the UI inbox with their
-    shipment and order context, ordered by severity rank
-    and detection time.
+    shipment and order context, ordered by operational
+    priority:
+
+    1. actionable exceptions first (exceptions that have at
+       least one feasible recovery option — the work a
+       planner can act on now);
+    2. most recently detected first;
+    3. exception_id descending as the deterministic
+       tie-break, which also orders records that share a
+       detection timestamp by creation sequence — so the
+       newest detected exception surfaces at the top of
+       the actionable queue.
+
+    Severity is rendered on every inbox row (triage
+    labels) but does not gate queue position: with the
+    bounded row cap, severity-first ordering buried newly
+    detected actionable exceptions behind severity buckets
+    larger than the cap itself (the bootstrap dataset
+    holds 271 open Critical exceptions), making new
+    operational work undiscoverable. The queue now
+    surfaces the newest actionable work first; severity
+    remains visible for triage and in the control-tower
+    counts.
 
     Moved verbatim from the UI inbox query
     in app/main.py.
@@ -115,13 +136,6 @@ def get_open_exceptions_inbox(connection):
             ON s.order_id = o.order_id
         WHERE e.resolution_status = 'Open'
         ORDER BY
-            CASE e.severity
-                WHEN 'Critical' THEN 1
-                WHEN 'High' THEN 2
-                WHEN 'Medium' THEN 3
-                WHEN 'Low' THEN 4
-                ELSE 5
-            END,
             CASE
                 WHEN EXISTS (
                     SELECT 1 FROM recovery_options ro
@@ -130,7 +144,8 @@ def get_open_exceptions_inbox(connection):
                 ) THEN 0
                 ELSE 1
             END,
-            e.detected_at
+            e.detected_at DESC,
+            e.exception_id DESC
         LIMIT 100
         """
     )

@@ -612,8 +612,8 @@ def test_count_open_critical_exceptions(seeded_database):
 def test_get_open_exceptions_inbox(seeded_database):
     """
     The inbox returns open exceptions with shipment and
-    order context, ordered by severity rank, and excludes
-    resolved records.
+    order context, actionable exceptions first, and
+    excludes resolved records.
     """
 
     connection = seeded_database
@@ -1365,14 +1365,15 @@ def test_get_options_for_exception_missing_exception_returns_empty(
 # INBOX ACTIONABILITY
 # ==================================================
 
-def test_inbox_orders_actionable_first_within_severity(
+def test_inbox_orders_actionable_first(
     seeded_database,
 ):
     """
-    Severity remains the primary inbox ordering; inside
-    each severity class, exceptions with feasible options
-    (actionable) rank above exceptions without them, and
-    every row exposes its feasible_option_count.
+    Actionable exceptions (those with feasible options)
+    rank above non-actionable ones — the primary inbox
+    ordering — and inside each class the most recently
+    detected rank first, with the exception_id descending
+    tie-break for shared detection timestamps.
     """
 
     connection = seeded_database
@@ -1383,8 +1384,8 @@ def test_inbox_orders_actionable_first_within_severity(
         generate_recovery_options(connection)
 
         # A newer High-severity exception without options
-        # must rank BELOW the actionable one despite being
-        # more recent.
+        # must rank BELOW the actionable High one despite
+        # being more recent.
         exceptions_repo.insert_exceptions(
             connection,
             [
@@ -1420,6 +1421,214 @@ def test_inbox_orders_actionable_first_within_severity(
         assert counts["EXC-900002"] == 3
         assert counts["EXC-900003"] == 0
         assert counts["EXC-900001"] == 0
+
+    finally:
+        connection.close()
+
+
+def test_inbox_detects_newest_actionable_exception_first(
+    seeded_database,
+):
+    """
+    The newest actionable exception surfaces first — the
+    ordering property that makes a newly detected exception
+    discoverable after an operational refresh. Recency is
+    decided by detected_at; the exception_id descending
+    tie-break keeps the order deterministic for records
+    sharing a timestamp.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        # A newer, actionable High-severity exception: it
+        # must outrank the older actionable High exception.
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900004",
+                    "SHP-900002",
+                    "Delivery Delay",
+                    "High",
+                    "2026-09-11 12:00:00",
+                    "Newer actionable High exception",
+                    1500,
+                    "Open",
+                    None,
+                ),
+            ],
+        )
+
+        generate_recovery_options(connection)
+
+        inbox = exceptions_repo.get_open_exceptions_inbox(
+            connection
+        )
+
+        assert inbox[0]["exception_id"] == "EXC-900004"
+        assert inbox[0]["feasible_option_count"] == 3
+
+        # Older actionable High exception follows, then the
+        # non-actionable rows.
+        assert inbox[1]["exception_id"] == "EXC-900002"
+        assert inbox[2]["exception_id"] == "EXC-900001"
+
+    finally:
+        connection.close()
+
+
+def test_inbox_cap_keeps_newest_actionable_exceptions_visible(
+    seeded_database,
+):
+    """
+    The bounded inbox protects usability as data volume
+    grows. With the cap full of non-actionable rows, the
+    newest actionable exceptions must still appear inside
+    the first 100 rows — an actionable exception must not
+    be buried behind stale monitoring work.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        # A fresh actionable High exception — the situation
+        # after a refresh detects a new exception with
+        # feasible recovery options.
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900005",
+                    "SHP-900002",
+                    "Delivery Delay",
+                    "High",
+                    "2026-09-11 12:00:00",
+                    "Newest actionable exception",
+                    1500,
+                    "Open",
+                    None,
+                ),
+            ],
+        )
+
+        generate_recovery_options(connection)
+
+        # Fill the cap beyond 100 with older, non-actionable
+        # exceptions (zero feasible options).
+        rows = []
+
+        for index in range(1, 102):
+
+            rows.append(
+                (
+                    f"EXC-910{index:03d}",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Critical",
+                    "2026-09-01 12:00:00",
+                    f"Monitoring exception {index}",
+                    100,
+                    "Open",
+                    None,
+                ),
+            )
+
+        exceptions_repo.insert_exceptions(connection, rows)
+        connection.commit()
+
+        inbox = exceptions_repo.get_open_exceptions_inbox(
+            connection
+        )
+
+        assert len(inbox) == 100
+
+        ids = [row["exception_id"] for row in inbox]
+
+        assert "EXC-900005" in ids
+        assert "EXC-900002" in ids
+
+        # Both actionable exceptions outrank every
+        # non-actionable row inside the cap. EXC-910101 is
+        # the newest non-actionable row and therefore always
+        # visible in the capped result.
+        assert (
+            ids.index("EXC-900005")
+            < ids.index("EXC-910101")
+        )
+        assert (
+            ids.index("EXC-900002")
+            < ids.index("EXC-910101")
+        )
+
+        assert all(
+            row["feasible_option_count"] > 0
+            for row in inbox[:2]
+        )
+
+    finally:
+        connection.close()
+
+
+def test_inbox_ordering_is_deterministic(seeded_database):
+    """
+    Repeated calls return the same ordering — the planner
+    sees a stable queue.
+    """
+
+    connection = seeded_database
+
+    try:
+        generate_recovery_options(connection)
+
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900006",
+                    "SHP-900002",
+                    "Delivery Delay",
+                    "High",
+                    "2026-09-10 12:00:00",
+                    "Same-timestamp High exception",
+                    750,
+                    "Open",
+                    None,
+                ),
+            ],
+        )
+
+        generate_recovery_options(connection)
+
+        first = [
+            row["exception_id"]
+            for row in exceptions_repo.get_open_exceptions_inbox(
+                connection
+            )
+        ]
+
+        second = [
+            row["exception_id"]
+            for row in exceptions_repo.get_open_exceptions_inbox(
+                connection
+            )
+        ]
+
+        assert first == second
+
+        # Same detected_at for EXC-900002 and EXC-900006:
+        # the ID tie-break decides deterministically.
+        actionable = [
+            exception_id
+            for exception_id in first
+            if exception_id in ("EXC-900002", "EXC-900006")
+        ]
+
+        assert actionable == ["EXC-900006", "EXC-900002"]
 
     finally:
         connection.close()
