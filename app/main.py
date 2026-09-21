@@ -1257,6 +1257,133 @@ def main():
                 )
 
             # --------------------------------------------------
+            # SUSTAINABILITY IMPACT (INFORMATIONAL)
+            #
+            # Estimated transport emissions for the
+            # recommendation and its feasible alternatives,
+            # computed from persisted shipment data and the
+            # configured prototype factors. Purely informational
+            # decision support: it never changes the
+            # recommendation, the rationale above, or any
+            # workflow state (Checkpoint V boundary).
+            # --------------------------------------------------
+
+            st.subheader("Sustainability Impact")
+
+            sustainability = services.get_sustainability_comparison(
+                connection,
+                selected_exception_id,
+            )
+
+            if sustainability is None:
+
+                st.caption(
+                    "No deterministic recommendation exists, so "
+                    "there is no recovery option to assess."
+                )
+
+            else:
+
+                estimates = sustainability.get("estimates", [])
+
+                if (
+                    sustainability.get("status")
+                    == "available"
+                    and estimates
+                ):
+
+                    sustainability_rows = []
+
+                    for position, estimate in enumerate(
+                        estimates
+                    ):
+
+                        if (
+                            estimate.get("status")
+                            == "available"
+                        ):
+
+                            sustainability_rows.append(
+                                {
+                                    "Option": (
+                                        "Recommended"
+                                        if position == 0
+                                        else "Alternative"
+                                    ),
+                                    "Mode": (
+                                        estimate[
+                                            "transport_mode"
+                                        ]
+                                    ),
+                                    "Estimated CO₂e (kg)": (
+                                        f"{estimate['estimated_co2e_kg']:,.2f}"
+                                    ),
+                                }
+                            )
+
+                        else:
+
+                            sustainability_rows.append(
+                                {
+                                    "Option": (
+                                        "Recommended"
+                                        if position == 0
+                                        else "Alternative"
+                                    ),
+                                    "Mode": (
+                                        estimate[
+                                            "transport_mode"
+                                        ]
+                                    ),
+                                    "Estimated CO₂e (kg)": (
+                                        "Not available"
+                                    ),
+                                }
+                            )
+
+                    st.dataframe(
+                        sustainability_rows,
+                        hide_index=True,
+                        width="stretch",
+                    )
+
+                    lowest = sustainability.get(
+                        "lowest_emission_option"
+                    )
+
+                    if (
+                        lowest
+                        and lowest["option_id"]
+                        != recovery['option_id']
+                    ):
+
+                        st.write(
+                            f"**Sustainability trade-off:** the "
+                            f"lowest-emission feasible alternative "
+                            f"is {lowest['transport_mode']} at "
+                            f"{lowest['estimated_co2e_kg']:,.2f} "
+                            "kg CO₂e — the recommendation wins on "
+                            "operational fit, not on estimated "
+                            "emissions."
+                        )
+
+                else:
+
+                    st.info(
+                        "Sustainability estimate unavailable — "
+                        "the required shipment data is missing "
+                        "or invalid."
+                    )
+
+                st.caption(
+                    sustainability.get(
+                        "data_quality_note",
+                        "Estimated transport emissions; "
+                        "prototype methodology.",
+                    )
+                )
+
+            # --------------------------------------------------
             # AI DECISION BRIEF (ADVISORY)
             #
             # Optional, planner-triggered interpretation of the

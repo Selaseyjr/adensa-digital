@@ -96,3 +96,42 @@ RISK_BENCHMARK = {
     "acceptable": 50,
     "high": 75,
 }
+
+
+# ==================================================
+# SUSTAINABILITY CONFIGURATION (PROTOTYPE)
+# ==================================================
+
+# Estimated transport emissions for recovery options.
+#
+# Methodology (prototype assumption, NOT measured data):
+#
+#     estimated CO2e (kg) = shipment tonnes
+#                         × route kilometres
+#                         × mode emissions factor
+#
+# Factors are kg CO2e per tonne-kilometre, expressed in
+# indicative prototype magnitudes consistent with the
+# publicly known ordering of transport modes (air highest,
+# sea lowest). They are configurable assumptions for
+# decision-support comparison, not carbon accounting, and
+# every UI surface labels the result as an estimate.
+#
+# Only the transport modes Adensa actually supports are
+# listed; an unsupported mode must fail safely rather than
+# silently produce zero emissions.
+
+TRANSPORT_EMISSIONS_FACTORS = {
+    "Air": 0.60,
+    "Road": 0.10,
+    "Rail": 0.028,
+    "Sea": 0.015,
+}
+
+EMISSIONS_UNIT = "kg CO₂e"
+
+EMISSIONS_METHODOLOGY_NOTE = (
+    "Estimated transport emissions = shipment tonnes × "
+    "route kilometres × configured mode factor. Factors "
+    "are prototype assumptions, not measured data."
+)

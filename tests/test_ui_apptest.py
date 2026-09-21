@@ -280,9 +280,10 @@ def test_actionable_exception_renders_recommendation():
         assert "Recovery Options Comparison" in subheaders
 
         # The recommendation comparison table, the
-        # Checkpoint T rationale factor-breakdown table and
-        # the Checkpoint R operational-history table.
-        assert len(app_test.dataframe) == 3
+        # Checkpoint T rationale factor-breakdown table, the
+        # Checkpoint V sustainability table and the Checkpoint
+        # R operational-history table.
+        assert len(app_test.dataframe) == 4
 
         # Checkpoint Q: the investigation view opens with the
         # recorded issue and shows the decision factors.
@@ -367,6 +368,35 @@ def test_actionable_exception_renders_recommendation():
             and "not a probability of success" in (text or "")
             for text in weight_texts
         ), "confidence basis must accompany the label"
+
+        # Checkpoint V: the sustainability section estimates
+        # emissions for every feasible option and states the
+        # prototype methodology, without touching the decision.
+        assert "Sustainability Impact" in subheaders
+
+        sustainability_table = [
+            frame.value
+            for frame in app_test.dataframe
+            if "Estimated CO₂e (kg)" in frame.value.columns
+        ][0]
+
+        assert (
+            sustainability_table["Option"].tolist()
+            == ["Recommended", "Alternative", "Alternative"]
+        )
+
+        co2_values = sustainability_table[
+            "Estimated CO₂e (kg)"
+        ].tolist()
+
+        assert all(
+            value != "Not available" for value in co2_values
+        ), "fixture data supports estimates for all three modes"
+
+        assert any(
+            "Prototype sustainability estimate" in (c or "")
+            for c in _text_values(app_test.caption)
+        ), "methodology/assumption note must be visible"
 
         assert _widget(
             app_test, "text_input", "approver_"

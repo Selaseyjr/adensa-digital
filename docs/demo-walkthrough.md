@@ -149,6 +149,14 @@ options exist, Adensa presents:
 A planner can see exactly why an option was recommended and what the
 alternatives cost. Adensa recommends; the planner decides.
 
+The investigation also shows a **Sustainability Impact** section: a
+prototype sustainability estimate of transport CO₂e for the
+recommendation and every feasible alternative
+(`tonnes × km × configured mode factor`, from the persisted
+shipment weight and route distance). It is informational decision
+support — it never changes the recommendation — and every figure
+is labelled as an estimate, not carbon accounting.
+
 Optionally, the planner can generate an **AI Decision Brief** — an
 advisory, plainly-labelled natural-language reading of the same
 deterministic assessment. It is triggered explicitly, explains

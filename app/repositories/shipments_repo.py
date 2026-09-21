@@ -313,3 +313,31 @@ def insert_shipment_events(
         """,
         event_records,
     )
+
+
+def get_shipment_emissions_inputs(
+    connection,
+    shipment_id,
+):
+    """
+    Return the persisted physical inputs for the
+    sustainability estimation of one shipment — its weight
+    and route distance — or None when the shipment does not
+    exist.
+
+    Read-only projection of existing columns; no
+    sustainability logic lives here.
+    """
+
+    cursor = connection.cursor()
+
+    return cursor.execute(
+        """
+        SELECT
+            weight_kg,
+            distance_km
+        FROM shipments
+        WHERE shipment_id = ?
+        """,
+        (shipment_id,),
+    ).fetchone()

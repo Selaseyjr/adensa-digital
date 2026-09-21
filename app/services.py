@@ -49,6 +49,7 @@ from app.ai_support import (
     unavailable_brief,
     validate_decision_brief,
 )
+from app.sustainability import build_sustainability_comparison
 from app.repositories import exceptions_repo
 from app.repositories import manual_interventions_repo
 from app.repositories import recovery_actions_repo
@@ -1331,6 +1332,10 @@ def build_decision_brief_evidence(
             if assessment
             else None
         ),
+        "sustainability": get_sustainability_comparison(
+            connection,
+            exception_id,
+        ),
         "history": history,
     }
 
@@ -1409,6 +1414,72 @@ def get_decision_brief(
             f"AI decision brief unavailable ({error}). "
             "Deterministic recommendation remains available."
         )
+
+
+# ==================================================
+# SUSTAINABILITY IMPACT (INFORMATIONAL)
+# ==================================================
+
+def get_sustainability_comparison(
+    connection,
+    exception_id,
+):
+    """
+    Estimated transport emissions for an exception's
+    deterministic recommendation and its feasible
+    alternatives.
+
+    Purely informational decision support (Checkpoint V): the
+    calculation uses the persisted shipment weight and route
+    distance plus the configured prototype emissions factors,
+    and it never influences the recommendation, the scores,
+    the confidence or any workflow state.
+
+    Returns None when the exception or the deterministic
+    recommendation does not exist (nothing to compare),
+    otherwise the structured comparison projection from the
+    sustainability module — including honest per-option
+    unavailable records when an estimate cannot be produced.
+    """
+
+    exception_context = get_exception_context(
+        connection,
+        exception_id,
+    )
+
+    if exception_context is None:
+        return None
+
+    assessment = get_recovery_assessment(
+        connection,
+        exception_id,
+    )
+
+    if (
+        assessment is None
+        or assessment.get("recommendation") is None
+    ):
+        return None
+
+    inputs = shipments_repo.get_shipment_emissions_inputs(
+        connection,
+        exception_context["shipment_id"],
+    )
+
+    if inputs is None:
+        return {
+            "status": "unavailable",
+            "reason": "Shipment record not found.",
+        }
+
+    return build_sustainability_comparison(
+        inputs["weight_kg"],
+        inputs["distance_km"],
+        [
+            assessment["recommendation"],
+            *assessment["alternatives"],
+        ],
+    )
 
 
 # ==================================================
