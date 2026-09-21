@@ -111,15 +111,37 @@ def _inbox_selectbox(app_test):
     ][0]
 
 
+def _work_queue_table(app_test):
+    """The exception-inbox work-queue table (Checkpoint W3)."""
+
+    return [
+        frame.value
+        for frame in app_test.dataframe
+        if "State" in frame.value.columns
+        and "Exception" in frame.value.columns
+    ][0]
+
+
+def _queue_state(app_test, exception_id):
+    """The triage state shown for an exception in the queue."""
+
+    queue = _work_queue_table(app_test)
+
+    return queue.loc[
+        queue["Exception"] == exception_id, "State"
+    ].iloc[0]
+
+
 def _select_exception(app_test, exception_id):
-    """Select an exception in the inbox by its label."""
+    """Select an exception in the inbox by its identifier."""
 
     inbox = _inbox_selectbox(app_test)
 
     label = [
         option
         for option in inbox.options
-        if exception_id in option
+        if option.split(" — ")[0] == exception_id
+        or exception_id in option
     ][0]
 
     inbox.set_value(label).run()
@@ -194,17 +216,12 @@ def test_initial_control_tower_render():
         assert _metric(app_test, "Critical Open") == "0"
         assert _metric(app_test, "Recently Resolved") == "0"
 
-        # Inbox triage labels (Checkpoint E).
-        options = list(_inbox_selectbox(app_test).options)
-
-        assert any(
-            "EXC-900002" in option and "Actionable" in option
-            for option in options
-        )
-        assert any(
-            "EXC-900001" in option
-            and "No feasible recovery" in option
-            for option in options
+        # Inbox triage states (Checkpoint E; the work-queue
+        # table since Checkpoint W3).
+        assert _queue_state(app_test, "EXC-900002") == "Actionable"
+        assert (
+            _queue_state(app_test, "EXC-900001")
+            == "No feasible recovery"
         )
 
     finally:
@@ -281,9 +298,10 @@ def test_actionable_exception_renders_recommendation():
 
         # The recommendation comparison table, the
         # Checkpoint T rationale factor-breakdown table, the
-        # Checkpoint V sustainability table and the Checkpoint
-        # R operational-history table.
-        assert len(app_test.dataframe) == 4
+        # Checkpoint V sustainability table, the Checkpoint
+        # R operational-history table, and (since Checkpoint
+        # W3) the exception work queue.
+        assert len(app_test.dataframe) == 5
 
         # Checkpoint Q: the investigation view opens with the
         # recorded issue and shows the decision factors.
@@ -510,6 +528,13 @@ def test_executed_but_still_open_is_not_reported_resolved():
             "EXC-900002" in option for option in options
         )
 
+        # The work-queue state stays follow-up work, not a
+        # false resolution.
+        assert (
+            _queue_state(app_test, "EXC-900002")
+            == "Follow-up required"
+        )
+
         # The Recently Resolved surface stays empty.
         assert _metric(
             app_test, "Recently Resolved"
@@ -646,7 +671,11 @@ def test_manual_resolution_makes_exception_resolved():
             fresh, "Recently Resolved"
         ) == "1"
 
-        resolved_rows = fresh.dataframe[0].value
+        resolved_rows = [
+            frame.value
+            for frame in fresh.dataframe
+            if "Resolution Path" in frame.value.columns
+        ][0]
 
         row = resolved_rows.iloc[0]
 
@@ -825,7 +854,11 @@ def test_recently_resolved_survives_resolution():
             app_test, "Recently Resolved"
         ) == "1"
 
-        resolved_rows = app_test.dataframe[0].value
+        resolved_rows = [
+            frame.value
+            for frame in app_test.dataframe
+            if "Resolution Path" in frame.value.columns
+        ][0]
 
         row = resolved_rows.iloc[0]
 
@@ -1042,14 +1075,11 @@ def test_investigation_shows_executed_still_open_state():
         assert "2026-09-17" in evidence[0]
         assert "2026-09-15" in evidence[0]
 
-        # The triage label in the inbox marks the exception
+        # The work-queue triage state marks the exception
         # as follow-up work rather than plain actionable.
-        options = list(_inbox_selectbox(app_test).options)
-
-        assert any(
-            "EXC-900002" in option
-            and "Follow-up required" in option
-            for option in options
+        assert (
+            _queue_state(app_test, "EXC-900002")
+            == "Follow-up required"
         )
 
     finally:
@@ -1200,6 +1230,59 @@ def test_ai_decision_brief_unavailable_keeps_deterministic_view():
         assert _widget(
             app_test, "button", "approve_"
         ) is not None
+
+    finally:
+        tmp.cleanup()
+
+
+def test_work_queue_table_scans_operational_fields():
+    """
+    Checkpoint W3: the inbox renders as a scannable
+    work-queue table carrying the operational fields a
+    planner triages on, in the repository's existing
+    actionable-first ordering, and selection still drives
+    the investigation workspace.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        queue = _work_queue_table(app_test)
+
+        # Scannable triage fields, straight from the inbox
+        # service — no recomputed values.
+        for column in (
+            "Exception",
+            "Severity",
+            "Issue",
+            "Mode",
+            "Location",
+            "Required",
+            "State",
+        ):
+            assert column in queue.columns
+
+        # The actionable exception leads the queue (the O1
+        # ordering is unchanged) with its triage state.
+        assert queue["Exception"].iloc[0] == "EXC-900002"
+        assert queue["State"].iloc[0] == "Actionable"
+
+        # The monitoring exception remains visible in the
+        # same surface with its own state.
+        states = dict(
+            zip(queue["Exception"], queue["State"])
+        )
+        assert states["EXC-900001"] == "No feasible recovery"
+
+        # Selection still opens the investigation workspace.
+        _select_exception(app_test, "EXC-900002")
+
+        assert any(
+            "Recovery recommendation available" in value
+            for value in _text_values(app_test.success)
+        )
 
     finally:
         tmp.cleanup()

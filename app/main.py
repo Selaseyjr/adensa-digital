@@ -573,47 +573,23 @@ def render_exception_inbox(connection):
 
         return
 
-    # Triage labels: severity, exception type and the
-    # actionability verdict from the existing option
-    # data — so the operator can distinguish exceptions
-    # requiring action from exceptions under monitoring.
-    inbox_entries = [
-        (
-            row["exception_id"],
-            (
-                f"{row['exception_id']} — "
-                f"{row['severity']} · "
-                f"{row['exception_type']} · "
-                + (
-                    "Follow-up required"
-                    if row["executed_still_open"]
-                    else (
-                        "Actionable"
-                        if row["feasible_option_count"]
-                        else "No feasible recovery"
-                    )
-                )
-            ),
-        )
+    # Triage state: the actionability verdict from the
+    # existing option/action data — so the operator can
+    # distinguish exceptions requiring action from exceptions
+    # under monitoring (unchanged semantics).
+    def _triage_state(row):
+        if row["executed_still_open"]:
+            return "Follow-up required"
+        if row["feasible_option_count"]:
+            return "Actionable"
+        return "No feasible recovery"
+
+    # Selection universe: the inbox identifiers, in the
+    # repository's deterministic actionable-first order.
+    exception_options = [
+        row["exception_id"]
         for row in exceptions
     ]
-
-    exception_options = [
-        exception_id
-        for exception_id, _ in inbox_entries
-    ]
-
-    exception_display_options = [
-        label
-        for _, label in inbox_entries
-    ]
-
-    label_by_id = dict(inbox_entries)
-
-    display_to_id = {
-        label: exception_id
-        for exception_id, label in inbox_entries
-    }
 
     # Focus a newly detected exception after an
     # operational refresh; otherwise preserve the
@@ -640,28 +616,58 @@ def render_exception_inbox(connection):
             exception_options[0]
         )
 
+    # Work-queue table: the scannable operational surface.
+    # One row per inbox entry, in the repository's existing
+    # actionable-first ordering, with the fields a planner
+    # triages on. All values come from the inbox service —
+    # nothing is recomputed or re-queried here.
+    queue_rows = [
+        {
+            "Exception": row["exception_id"],
+            "Severity": row["severity"],
+            "Issue": row["exception_type"],
+            "Mode": row["transport_mode"],
+            "Location": row["current_location"],
+            "Required": row["required_delivery_date"],
+            "State": _triage_state(row),
+        }
+        for row in exceptions
+    ]
+
+    st.dataframe(
+        queue_rows,
+        hide_index=True,
+        width="stretch",
+        key="exception_work_queue",
+    )
+
+    st.caption(
+        "Select an exception below to investigate it in the "
+        "workspace underneath."
+    )
+
+    # Selection control: short, stable labels (identifier
+    # plus the recorded issue) rather than the overloaded
+    # triage string — the operational fields now live in the
+    # queue table above.
+    label_by_id = {
+        row["exception_id"]:
+        f"{row['exception_id']} - {row['exception_type']}"
+        for row in exceptions
+    }
+
     selected_display = st.selectbox(
         "Select an exception to investigate",
-        exception_display_options,
-        index=exception_display_options.index(
+        list(label_by_id.values()),
+        index=list(label_by_id.values()).index(
             label_by_id[
                 st.session_state.selected_exception_id
             ]
         ),
     )
 
-    selected_exception_id = display_to_id[
-        selected_display
-    ]
-
     st.session_state.selected_exception_id = (
-        selected_exception_id
-    )
-
-    selected_exception = next(
-        row
-        for row in exceptions
-        if row["exception_id"] == selected_exception_id
+        selected_display.split(" - ")[0]
     )
 
     return True
