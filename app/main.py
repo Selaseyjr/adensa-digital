@@ -1256,6 +1256,103 @@ def main():
                     f"{rationale['confidence_basis']}"
                 )
 
+            # --------------------------------------------------
+            # AI DECISION BRIEF (ADVISORY)
+            #
+            # Optional, planner-triggered interpretation of the
+            # deterministic assessment above. The AI layer can
+            # only explain established evidence — it can never
+            # select, approve, execute or resolve anything, and
+            # a failed or invalid brief leaves this section in
+            # an honest unavailable state while the
+            # deterministic recommendation remains authoritative.
+            # --------------------------------------------------
+
+            st.subheader("AI Decision Brief")
+
+            brief_state = st.session_state.get(
+                "decision_brief_state"
+            )
+
+            if (
+                brief_state
+                and brief_state.get("exception_id")
+                != selected_exception_id
+            ):
+                brief_state = None
+
+            if st.button(
+                "Generate AI Decision Brief",
+                key=f"ai_brief_{selected_exception_id}",
+            ):
+
+                st.session_state.decision_brief_state = {
+                    "exception_id": selected_exception_id,
+                    "brief": services.get_decision_brief(
+                        connection,
+                        selected_exception_id,
+                    ),
+                }
+
+                st.rerun()
+
+            brief_state = st.session_state.get(
+                "decision_brief_state"
+            )
+
+            if (
+                brief_state
+                and brief_state.get("exception_id")
+                == selected_exception_id
+            ):
+
+                brief = brief_state["brief"]
+
+                if brief["status"] == "available":
+
+                    st.caption(brief["advisory_label"])
+
+                    st.write(
+                        f"**Situation**\n\n"
+                        f"{brief['situation_summary']}"
+                    )
+
+                    st.write(
+                        f"**Why this option**\n\n"
+                        f"{brief['recommended_action']} "
+                        f"{brief['rationale']}"
+                    )
+
+                    st.write(
+                        f"**Trade-offs**\n\n"
+                        f"{brief['tradeoffs']}"
+                    )
+
+                    if brief["verification_points"]:
+
+                        st.write("**Verify before acting**")
+
+                        for point in brief[
+                            "verification_points"
+                        ]:
+
+                            st.write(f"- {point}")
+
+                    st.caption(brief["disclaimer"])
+
+                else:
+
+                    st.info(brief["message"])
+
+            else:
+
+                st.caption(
+                    "Optional AI-assisted interpretation of the "
+                    "deterministic assessment above. Advisory "
+                    "only — the deterministic recommendation "
+                    "remains authoritative."
+                )
+
             st.divider()
 
             # --------------------------------------------------

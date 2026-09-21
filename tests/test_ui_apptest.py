@@ -1024,3 +1024,152 @@ def test_investigation_shows_executed_still_open_state():
 
     finally:
         tmp.cleanup()
+
+
+# ==================================================
+# SCENARIO 15 — AI DECISION BRIEF (ADVISORY)
+# ==================================================
+
+def test_ai_decision_brief_is_advisory_and_preserves_determinism():
+    """
+    Checkpoint U: the investigation view offers an explicit,
+    planner-triggered AI decision brief. The brief is clearly
+    labelled advisory and grounded in the deterministic
+    evidence; when the AI layer is unavailable the honest
+    message is shown and the deterministic recommendation and
+    rationale remain untouched. No brief is generated merely by
+    opening the investigation view.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        _select_exception(app_test, "EXC-900002")
+
+        subheaders = _text_values(app_test.subheader)
+
+        # The section exists, sits beside the deterministic
+        # sections, and starts with no brief generated.
+        assert "AI Decision Brief" in subheaders
+
+        captions = _text_values(app_test.caption)
+
+        assert any(
+            "Optional AI-assisted interpretation" in (c or "")
+            for c in captions
+        ), "no automatic AI call on view: idle state shown"
+
+        # Explicit planner action generates the brief through
+        # the real service layer and the built-in provider.
+        _widget(
+            app_test, "button", "ai_brief_"
+        ).click().run()
+
+        assert not app_test.exception
+
+        subheaders = _text_values(app_test.subheader)
+
+        assert "AI Decision Brief" in subheaders
+
+        # Advisory labelling and grounded content.
+        captions = _text_values(app_test.caption)
+
+        assert any(
+            "AI-assisted · Advisory only" in (c or "")
+            for c in captions
+        ), "the brief must be labelled advisory"
+
+        writes = _text_values(app_test.markdown)
+
+        assert any(
+            "Situation" in (w or "") for w in writes
+        ), "brief sections render"
+
+        assert any(
+            "EXC-900002" in (w or "") for w in writes
+        ), "the brief quotes the real exception identifier"
+
+        assert any(
+            "does not approve, execute, or resolve" in (c or "")
+            for c in captions
+        ), "the advisory disclaimer is shown in the brief"
+
+        # The deterministic sections remain visibly intact
+        # alongside the advisory brief.
+        assert "Recommended Recovery" in subheaders
+        assert "Recommendation Rationale" in subheaders
+
+        # The workflow boundary is untouched: approval still
+        # requires the real workflow controls.
+        assert _widget(
+            app_test, "text_input", "approver_"
+        ) is not None
+        assert _widget(
+            app_test, "button", "approve_"
+        ) is not None
+
+    finally:
+        tmp.cleanup()
+
+
+def test_ai_decision_brief_unavailable_keeps_deterministic_view():
+    """
+    When the AI layer fails, the UI shows the honest unavailable
+    message and the deterministic recommendation, rationale and
+    workflow controls remain fully available.
+    """
+
+    import app.ai_support as ai_support
+    import app.services as services
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        _select_exception(app_test, "EXC-900002")
+
+        # AppTest executes the real UI in-process, so the
+        # provider seam the service reads at call time can be
+        # replaced with a failing provider: the planner clicks
+        # the real button and the real failure path renders.
+        class _FailingProvider:
+            def __call__(self, evidence):
+                raise ai_support.AiProviderError(
+                    "simulated provider outage"
+                )
+
+        original = services.DEFAULT_PROVIDER
+        services.DEFAULT_PROVIDER = _FailingProvider()
+
+        try:
+            _widget(
+                app_test, "button", "ai_brief_"
+            ).click().run()
+        finally:
+            services.DEFAULT_PROVIDER = original
+
+        assert not app_test.exception
+
+        infos = _text_values(app_test.info)
+
+        assert any(
+            "AI decision brief unavailable" in (i or "")
+            for i in infos
+        ), "the unavailable state must be shown honestly"
+
+        subheaders = _text_values(app_test.subheader)
+
+        # Deterministic decision support is unaffected.
+        assert "Recommended Recovery" in subheaders
+        assert "Recommendation Rationale" in subheaders
+        assert "Recovery Options Comparison" in subheaders
+
+        assert _widget(
+            app_test, "button", "approve_"
+        ) is not None
+
+    finally:
+        tmp.cleanup()

@@ -17,3 +17,4 @@ reviewing it for the first time.
 | [ADR-006](006-separate-manual-resolution-path.md) | Separate manual resolution path | Accepted |
 | [ADR-007](007-power-automate-external-orchestration.md) | Power Automate as an external orchestration layer | Accepted |
 | [ADR-008](008-api-security-foundation.md) | API security foundation (prototype API key) | Accepted |
+| [ADR-009](009-advisory-ai-decision-support.md) | Advisory AI decision-support layer | Accepted |

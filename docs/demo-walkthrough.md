@@ -149,6 +149,11 @@ options exist, Adensa presents:
 A planner can see exactly why an option was recommended and what the
 alternatives cost. Adensa recommends; the planner decides.
 
+Optionally, the planner can generate an **AI Decision Brief** — an
+advisory, plainly-labelled natural-language reading of the same
+deterministic assessment. It is triggered explicitly, explains
+rather than decides, and is never required for the workflow.
+
 ### Approve the recovery
 
 Under **Workflow Action**, enter an approver name and press
