@@ -786,12 +786,48 @@ def render_exception_details(connection):
         )
 
 
-def render_decision_support(connection):
+def render_investigation_state(connection):
     """
-    Decision engine, recommendation, rationale, sustainability,
-    AI brief and workflow action for the selected exception.
+    Current operational state of the selected exception,
+    from services.classify_investigation_state (persisted
+    evidence only). Surfaced before the situation and
+    decision support so the planner knows what kind of
+    attention the exception needs.
     """
 
+    selected_exception_id = st.session_state.selected_exception_id
+
+    state = services.classify_investigation_state(
+        connection,
+        selected_exception_id,
+    )
+
+    if state is None:
+
+        return
+
+    st.subheader("Current State")
+
+    if state["follow_up_required"]:
+
+        st.warning(
+            f"**{state['state']}** — {state['reason']}"
+        )
+
+    else:
+
+        st.info(
+            f"**{state['state']}** — {state['reason']}"
+        )
+
+
+def render_decision_support(connection):
+    """
+    Deterministic decision support for the selected
+    exception: recovery assessment, recommendation,
+    option comparison, rationale and sustainability
+    impact.
+    """
     selected_exception_id = st.session_state.selected_exception_id
 
     st.header("Decision Engine")
@@ -1403,317 +1439,336 @@ def render_decision_support(connection):
                 )
             )
 
-        # --------------------------------------------------
-        # AI DECISION BRIEF (ADVISORY)
-        #
-        # Optional, planner-triggered interpretation of the
-        # deterministic assessment above. The AI layer can
-        # only explain established evidence — it can never
-        # select, approve, execute or resolve anything, and
-        # a failed or invalid brief leaves this section in
-        # an honest unavailable state while the
-        # deterministic recommendation remains authoritative.
-        # --------------------------------------------------
 
-        st.subheader("AI Decision Brief")
+def render_ai_decision_brief(connection):
+    """
+    Optional AI-assisted interpretation of the
+    deterministic assessment. Advisory only: it can
+    never select, approve, execute or resolve anything.
+    """
+    # --------------------------------------------------
+    # AI DECISION BRIEF (ADVISORY)
+    #
+    # Optional, planner-triggered interpretation of the
+    # deterministic assessment above. The AI layer can
+    # only explain established evidence — it can never
+    # select, approve, execute or resolve anything, and
+    # a failed or invalid brief leaves this section in
+    # an honest unavailable state while the
+    # deterministic recommendation remains authoritative.
+    # --------------------------------------------------
 
-        brief_state = st.session_state.get(
-            "decision_brief_state"
+    selected_exception_id = st.session_state.selected_exception_id
+
+    st.header("AI Decision Brief")
+
+    brief_state = st.session_state.get(
+        "decision_brief_state"
+    )
+
+    if (
+        brief_state
+        and brief_state.get("exception_id")
+        != selected_exception_id
+    ):
+        brief_state = None
+
+    if st.button(
+        "Generate AI Decision Brief",
+        key=f"ai_brief_{selected_exception_id}",
+    ):
+
+        st.session_state.decision_brief_state = {
+            "exception_id": selected_exception_id,
+            "brief": services.get_decision_brief(
+                connection,
+                selected_exception_id,
+            ),
+        }
+
+        st.rerun()
+
+    brief_state = st.session_state.get(
+        "decision_brief_state"
+    )
+
+    if (
+        brief_state
+        and brief_state.get("exception_id")
+        == selected_exception_id
+    ):
+
+        brief = brief_state["brief"]
+
+        if brief["status"] == "available":
+
+            st.caption(brief["advisory_label"])
+
+            st.write(
+                f"**Situation**\n\n"
+                f"{brief['situation_summary']}"
+            )
+
+            st.write(
+                f"**Why this option**\n\n"
+                f"{brief['recommended_action']} "
+                f"{brief['rationale']}"
+            )
+
+            st.write(
+                f"**Trade-offs**\n\n"
+                f"{brief['tradeoffs']}"
+            )
+
+            if brief["verification_points"]:
+
+                st.write("**Verify before acting**")
+
+                for point in brief[
+                    "verification_points"
+                ]:
+
+                    st.write(f"- {point}")
+
+            st.caption(brief["disclaimer"])
+
+        else:
+
+            st.info(brief["message"])
+
+    else:
+
+        st.caption(
+            "Optional AI-assisted interpretation of the "
+            "deterministic assessment above. Advisory "
+            "only — the deterministic recommendation "
+            "remains authoritative."
         )
 
-        if (
-            brief_state
-            and brief_state.get("exception_id")
-            != selected_exception_id
-        ):
-            brief_state = None
 
-        if st.button(
-            "Generate AI Decision Brief",
-            key=f"ai_brief_{selected_exception_id}",
-        ):
+def render_workflow_action(connection):
+    """
+    Workflow controls for the selected exception,
+    rendered after the planner has seen the evidence:
+    approve / reject, execute, and terminal-state
+    reporting.
+"""
+    st.divider()
 
-            st.session_state.decision_brief_state = {
-                "exception_id": selected_exception_id,
-                "brief": services.get_decision_brief(
-                    connection,
-                    selected_exception_id,
-                ),
-            }
+    selected_exception_id = st.session_state.selected_exception_id
 
-            st.rerun()
 
-        brief_state = st.session_state.get(
-            "decision_brief_state"
+    # --------------------------------------------------
+    # WORKFLOW ACTION
+    # --------------------------------------------------
+
+    st.header("Workflow Action")
+
+    action = services.get_latest_action(
+        connection,
+        selected_exception_id,
+    )
+
+    if action:
+
+        st.write(
+            f"**Action:** {action['action_id']}"
         )
 
-        if (
-            brief_state
-            and brief_state.get("exception_id")
-            == selected_exception_id
-        ):
+        st.write(
+            f"**Status:** {action['status']}"
+        )
 
-            brief = brief_state["brief"]
+        if action["approved_by"]:
 
-            if brief["status"] == "available":
+            st.write(
+                f"**Approved By:** "
+                f"{action['approved_by']}"
+            )
 
-                st.caption(brief["advisory_label"])
+        if action["approved_at"]:
 
-                st.write(
-                    f"**Situation**\n\n"
-                    f"{brief['situation_summary']}"
+            st.write(
+                f"**Approved At:** "
+                f"{action['approved_at']}"
+            )
+
+        if action["executed_at"]:
+
+            st.write(
+                f"**Executed At:** "
+                f"{action['executed_at']}"
+            )
+
+        # --------------------------------------------------
+        # APPROVAL / REJECTION
+        # --------------------------------------------------
+
+        if action["status"] == PENDING_APPROVAL:
+
+            st.info(
+                "Decision required: approve to enable "
+                "execution, or reject to close this "
+                "recovery option."
+            )
+
+            approver_name = st.text_input(
+                "Approver name",
+                key=f"approver_{action['action_id']}",
+            )
+
+            approval_col, rejection_col = st.columns(2)
+
+            with approval_col:
+
+                if st.button(
+                    "Approve Recovery",
+                    type="primary",
+                    key=f"approve_{action['action_id']}",
+                ):
+
+                    if not approver_name.strip():
+
+                        st.warning(
+                            "Enter an approver name before "
+                            "approving the recovery."
+                        )
+
+                    else:
+
+                        try:
+
+                            st.session_state.last_workflow_outcome = services.approve_recovery(
+                                connection,
+                                action["action_id"],
+                                approver_name.strip(),
+                            )
+
+                            st.rerun()
+
+                        except RecoveryWorkflowError as error:
+
+                            st.error(
+                                f"Approval failed: {error}"
+                            )
+
+            with rejection_col:
+
+                if st.button(
+                    "Reject Recovery",
+                    key=f"reject_{action['action_id']}",
+                ):
+
+                    if not approver_name.strip():
+
+                        st.warning(
+                            "Enter the reviewer name before "
+                            "rejecting the recovery."
+                        )
+
+                    else:
+
+                        try:
+
+                            st.session_state.last_workflow_outcome = services.reject_recovery(
+                                connection,
+                                action["action_id"],
+                                approver_name.strip(),
+                            )
+
+                            st.rerun()
+
+                        except RecoveryWorkflowError as error:
+
+                            st.error(
+                                f"Rejection failed: {error}"
+                            )
+
+        # --------------------------------------------------
+        # EXECUTION
+        # --------------------------------------------------
+
+        elif action["status"] == APPROVED:
+
+            st.info(
+                "This recovery action has been approved "
+                "and is ready for execution."
+            )
+
+            if st.button(
+                "Execute Recovery",
+                type="primary",
+                key=f"execute_{action['action_id']}",
+            ):
+
+                try:
+
+                    st.session_state.last_workflow_outcome = services.execute_approved_recovery(
+                        connection,
+                        action["action_id"],
+                    )
+
+                    # Tell the next Streamlit run to bring
+                    # the outcome into view.
+                    st.session_state.scroll_to_outcome = True
+
+                    st.rerun()
+
+                except RecoveryWorkflowError as error:
+
+                    st.session_state.last_workflow_outcome = {
+                        "success": False,
+                        "message": (
+                            f"Recovery execution failed: "
+                            f"{error}"
+                        ),
+                    }
+
+                    st.session_state.scroll_to_outcome = True
+
+                    st.rerun()
+
+        # --------------------------------------------------
+        # TERMINAL STATES
+        # --------------------------------------------------
+
+        elif action["status"] == EXECUTED:
+
+            state = services.classify_investigation_state(
+                connection,
+                selected_exception_id,
+            )
+
+            if state and state["follow_up_required"]:
+
+                st.warning(
+                    f"Executed — still open. "
+                    f"{state['reason']}"
                 )
-
-                st.write(
-                    f"**Why this option**\n\n"
-                    f"{brief['recommended_action']} "
-                    f"{brief['rationale']}"
-                )
-
-                st.write(
-                    f"**Trade-offs**\n\n"
-                    f"{brief['tradeoffs']}"
-                )
-
-                if brief["verification_points"]:
-
-                    st.write("**Verify before acting**")
-
-                    for point in brief[
-                        "verification_points"
-                    ]:
-
-                        st.write(f"- {point}")
-
-                st.caption(brief["disclaimer"])
 
             else:
 
-                st.info(brief["message"])
+                st.success(
+                    "This recovery action has already "
+                    "been executed."
+                )
 
-        else:
+        elif action["status"] == REJECTED:
 
-            st.caption(
-                "Optional AI-assisted interpretation of the "
-                "deterministic assessment above. Advisory "
-                "only — the deterministic recommendation "
-                "remains authoritative."
+            # The workflow engine stores the rejection
+            # actor and timestamp in the action's
+            # approval audit fields.
+            st.warning(
+                "This recovery action was rejected "
+                f"by {action['approved_by']} "
+                f"at {action['approved_at']}."
             )
 
-        st.divider()
+    else:
 
-        # --------------------------------------------------
-        # WORKFLOW ACTION
-        # --------------------------------------------------
-
-        st.header("Workflow Action")
-
-        action = services.get_latest_action(
-            connection,
-            selected_exception_id,
+        st.info(
+            "No workflow action currently exists for this exception."
         )
-
-        if action:
-
-            st.write(
-                f"**Action:** {action['action_id']}"
-            )
-
-            st.write(
-                f"**Status:** {action['status']}"
-            )
-
-            if action["approved_by"]:
-
-                st.write(
-                    f"**Approved By:** "
-                    f"{action['approved_by']}"
-                )
-
-            if action["approved_at"]:
-
-                st.write(
-                    f"**Approved At:** "
-                    f"{action['approved_at']}"
-                )
-
-            if action["executed_at"]:
-
-                st.write(
-                    f"**Executed At:** "
-                    f"{action['executed_at']}"
-                )
-
-            # --------------------------------------------------
-            # APPROVAL / REJECTION
-            # --------------------------------------------------
-
-            if action["status"] == PENDING_APPROVAL:
-
-                st.info(
-                    "Decision required: approve to enable "
-                    "execution, or reject to close this "
-                    "recovery option."
-                )
-
-                approver_name = st.text_input(
-                    "Approver name",
-                    key=f"approver_{action['action_id']}",
-                )
-
-                approval_col, rejection_col = st.columns(2)
-
-                with approval_col:
-
-                    if st.button(
-                        "Approve Recovery",
-                        type="primary",
-                        key=f"approve_{action['action_id']}",
-                    ):
-
-                        if not approver_name.strip():
-
-                            st.warning(
-                                "Enter an approver name before "
-                                "approving the recovery."
-                            )
-
-                        else:
-
-                            try:
-
-                                st.session_state.last_workflow_outcome = services.approve_recovery(
-                                    connection,
-                                    action["action_id"],
-                                    approver_name.strip(),
-                                )
-
-                                st.rerun()
-
-                            except RecoveryWorkflowError as error:
-
-                                st.error(
-                                    f"Approval failed: {error}"
-                                )
-
-                with rejection_col:
-
-                    if st.button(
-                        "Reject Recovery",
-                        key=f"reject_{action['action_id']}",
-                    ):
-
-                        if not approver_name.strip():
-
-                            st.warning(
-                                "Enter the reviewer name before "
-                                "rejecting the recovery."
-                            )
-
-                        else:
-
-                            try:
-
-                                st.session_state.last_workflow_outcome = services.reject_recovery(
-                                    connection,
-                                    action["action_id"],
-                                    approver_name.strip(),
-                                )
-
-                                st.rerun()
-
-                            except RecoveryWorkflowError as error:
-
-                                st.error(
-                                    f"Rejection failed: {error}"
-                                )
-
-            # --------------------------------------------------
-            # EXECUTION
-            # --------------------------------------------------
-
-            elif action["status"] == APPROVED:
-
-                st.info(
-                    "This recovery action has been approved "
-                    "and is ready for execution."
-                )
-
-                if st.button(
-                    "Execute Recovery",
-                    type="primary",
-                    key=f"execute_{action['action_id']}",
-                ):
-
-                    try:
-
-                        st.session_state.last_workflow_outcome = services.execute_approved_recovery(
-                            connection,
-                            action["action_id"],
-                        )
-
-                        # Tell the next Streamlit run to bring
-                        # the outcome into view.
-                        st.session_state.scroll_to_outcome = True
-
-                        st.rerun()
-
-                    except RecoveryWorkflowError as error:
-
-                        st.session_state.last_workflow_outcome = {
-                            "success": False,
-                            "message": (
-                                f"Recovery execution failed: "
-                                f"{error}"
-                            ),
-                        }
-
-                        st.session_state.scroll_to_outcome = True
-
-                        st.rerun()
-
-            # --------------------------------------------------
-            # TERMINAL STATES
-            # --------------------------------------------------
-
-            elif action["status"] == EXECUTED:
-
-                state = services.classify_investigation_state(
-                    connection,
-                    selected_exception_id,
-                )
-
-                if state and state["follow_up_required"]:
-
-                    st.warning(
-                        f"Executed — still open. "
-                        f"{state['reason']}"
-                    )
-
-                else:
-
-                    st.success(
-                        "This recovery action has already "
-                        "been executed."
-                    )
-
-            elif action["status"] == REJECTED:
-
-                # The workflow engine stores the rejection
-                # actor and timestamp in the action's
-                # approval audit fields.
-                st.warning(
-                    "This recovery action was rejected "
-                    f"by {action['approved_by']} "
-                    f"at {action['approved_at']}."
-                )
-
-        else:
-
-            st.info(
-                "No workflow action currently exists for this exception."
-            )
-
 
 def render_operational_history(connection):
     """Chronological operational history for the selection."""
@@ -1810,14 +1865,21 @@ def main():
 
         render_work_queues(connection, summary)
 
+        st.divider()
+
+        render_investigation_state(connection)
+
         render_exception_context(connection)
 
         render_exception_details(connection)
 
-        st.divider()
         render_decision_support(connection)
 
         render_operational_history(connection)
+
+        render_ai_decision_brief(connection)
+
+        render_workflow_action(connection)
 
         if st.session_state.scroll_to_outcome:
 

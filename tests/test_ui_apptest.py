@@ -1108,11 +1108,12 @@ def test_ai_decision_brief_is_advisory_and_preserves_determinism():
 
         _select_exception(app_test, "EXC-900002")
 
-        subheaders = _text_values(app_test.subheader)
+        headers = _text_values(app_test.header)
 
-        # The section exists, sits beside the deterministic
-        # sections, and starts with no brief generated.
-        assert "AI Decision Brief" in subheaders
+        # The section exists (as its own top-level section,
+        # after the deterministic decision support), and
+        # starts with no brief generated.
+        assert "AI Decision Brief" in headers
 
         captions = _text_values(app_test.caption)
 
@@ -1129,9 +1130,9 @@ def test_ai_decision_brief_is_advisory_and_preserves_determinism():
 
         assert not app_test.exception
 
-        subheaders = _text_values(app_test.subheader)
+        headers = _text_values(app_test.header)
 
-        assert "AI Decision Brief" in subheaders
+        assert "AI Decision Brief" in headers
 
         # Advisory labelling and grounded content.
         captions = _text_values(app_test.caption)
@@ -1158,6 +1159,8 @@ def test_ai_decision_brief_is_advisory_and_preserves_determinism():
 
         # The deterministic sections remain visibly intact
         # alongside the advisory brief.
+        subheaders = _text_values(app_test.subheader)
+
         assert "Recommended Recovery" in subheaders
         assert "Recommendation Rationale" in subheaders
 
@@ -1283,6 +1286,78 @@ def test_work_queue_table_scans_operational_fields():
             "Recovery recommendation available" in value
             for value in _text_values(app_test.success)
         )
+
+    finally:
+        tmp.cleanup()
+
+
+# ==================================================
+# SCENARIO 18 — W4 INVESTIGATION STATE BANNER
+# ==================================================
+
+def test_investigation_state_banner_classifies_every_exception():
+    """
+    W4: every investigated exception opens with its current
+    operational state (from classify_investigation_state)
+    before the situation and decision support, so the
+    planner immediately knows what kind of attention is
+    required. The banner reflects persisted evidence and
+    stays in sync with the exception's lifecycle.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        # --- Decision required: pending-approval exception ---
+
+        _select_exception(app_test, "EXC-900002")
+
+        subheaders = _text_values(app_test.subheader)
+
+        assert "Current State" in subheaders
+
+        infos = _text_values(app_test.info)
+
+        assert any(
+            "Decision required" in (value or "")
+            for value in infos
+        ), "the pending state must be surfaced early"
+
+        # The banner precedes decision support: it appears
+        # in the same run, before any approval happened.
+        assert not any(
+            "Awaiting execution" in (value or "")
+            for value in infos
+        )
+
+        # --- Approve: the banner follows the transition ---
+
+        _widget(app_test, "text_input", "approver_").set_value(
+            "State Planner"
+        )
+        _widget(app_test, "button", "approve_").click().run()
+
+        assert not app_test.exception
+
+        infos = _text_values(app_test.info)
+
+        assert any(
+            "Awaiting execution" in (value or "")
+            for value in infos
+        ), "the awaiting-execution state must follow approval"
+
+        # --- Manual-resolution exception: no system recovery ---
+
+        _select_exception(app_test, "EXC-900001")
+
+        infos = _text_values(app_test.info)
+
+        assert any(
+            "No system recovery available" in (value or "")
+            for value in infos
+        ), "the no-recovery state must be surfaced for the manual path"
 
     finally:
         tmp.cleanup()
