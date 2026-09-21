@@ -137,6 +137,14 @@ options exist, Adensa presents:
   priority-alignment weights) — this is decision support, not AI.
 - **Recovery Options Comparison** — every feasible option as a
   comparable row in the engine's own ranking.
+- **Recommendation Rationale** — the decision policy weights straight
+  from application configuration (Cost 25% · Transit 30% · Risk 25% ·
+  Priority 20%), each factor's raw fit and weighted contribution for
+  the recommendation and every alternative, factual trade-offs where
+  an alternative scores higher on an individual factor, and the basis
+  of the confidence label: the separation between the recommended
+  option's score and the next-best alternative — not a probability of
+  success.
 
 A planner can see exactly why an option was recommended and what the
 alternatives cost. Adensa recommends; the planner decides.

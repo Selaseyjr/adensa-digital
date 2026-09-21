@@ -180,6 +180,26 @@ def score_option(option, priority):
         "transit_score": round(transit_score, 2),
         "risk_component": round(risk_score, 2),
         "priority_score": round(priority_score, 2),
+        # Weighted contribution of each factor to the
+        # decision score, exposed so the recommendation can
+        # be explained without recomputing anything.
+        "cost_contribution": round(
+            cost_score * DECISION_WEIGHTS["cost"],
+            2,
+        ),
+        "transit_contribution": round(
+            transit_score * DECISION_WEIGHTS["transit"],
+            2,
+        ),
+        "risk_contribution": round(
+            risk_score * DECISION_WEIGHTS["risk"],
+            2,
+        ),
+        "priority_contribution": round(
+            priority_score
+            * DECISION_WEIGHTS["priority_alignment"],
+            2,
+        ),
         "decision_score": round(decision_score, 2),
     }
 
@@ -262,8 +282,11 @@ def get_recommendation(connection, exception_id):
             confidence = "Low"
 
         confidence_reason = (
-            "The recommendation balances recovery cost, "
-            "transit time and operational risk."
+            "Based on the separation between this option's "
+            f"score ({recommendation['decision_score']:.2f}) "
+            "and the next-best alternative's score "
+            f"({scored_options[1]['decision_score']:.2f}) "
+            f"- a gap of {score_gap:.2f} points."
         )
 
     recommendation["confidence"] = confidence

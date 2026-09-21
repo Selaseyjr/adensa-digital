@@ -32,6 +32,7 @@ Rules:
 
 from datetime import datetime
 
+from app.config import DECISION_WEIGHTS
 from app.detect_exceptions import detect_exceptions
 from app.decision_engine import get_recommendation
 from app.errors import (
@@ -133,6 +134,182 @@ def get_latest_action(
     )
 
 
+# Factor columns used in the rationale projection, in a
+# fixed, planner-readable order. Each entry pairs the UI
+# label with the decision-engine factor-score key, its
+# configured weight key and the engine's weighted-
+# contribution key.
+
+RATIONALE_FACTORS = (
+    ("Cost fit", "cost_score", "cost", "cost_contribution"),
+    (
+        "Transit fit",
+        "transit_score",
+        "transit",
+        "transit_contribution",
+    ),
+    (
+        "Risk fit",
+        "risk_component",
+        "risk",
+        "risk_contribution",
+    ),
+    (
+        "Priority fit",
+        "priority_score",
+        "priority_alignment",
+        "priority_contribution",
+    ),
+)
+
+
+def get_recommendation_rationale(review):
+    """
+    Build a structured, presentation-oriented rationale for
+    an existing decision-engine review.
+
+    This is a projection layer only: every value is taken
+    from the engine's own output (factor scores, weighted
+    contributions, decision scores, confidence) or from the
+    authoritative decision configuration (DECISION_WEIGHTS).
+    No factor is recomputed and no business rule is
+    re-applied here.
+
+    The projection exists so the planner can answer "why
+    this option, and what trade-offs did it make?" without
+    reverse-engineering the score:
+
+    - factor_breakdown: one row per factor comparing the
+      recommendation with each alternative (raw score,
+      weight, weighted contribution);
+    - trade_offs: per-alternative, factor-level statements
+      of where an alternative beats the recommendation;
+    - weights: the configured policy itself, straight from
+      app.config (never duplicated in the UI);
+    - confidence_basis: the factual basis of the confidence
+      label (score separation) so it is not mistaken for a
+      statistical probability.
+    """
+
+    recommendation = review.get("recommendation")
+
+    if recommendation is None:
+
+        return None
+
+    weights = DECISION_WEIGHTS
+    alternatives = review.get("alternatives") or []
+
+    # One row per factor per compared option: the
+    # recommendation first, then every alternative, all in
+    # the engine's own ranking order.
+
+    compared = [recommendation, *alternatives]
+
+    factor_breakdown = []
+
+    for factor_label, score_key, weight_key, contribution_key in (
+        RATIONALE_FACTORS
+    ):
+
+        weight = weights[weight_key]
+
+        factor_breakdown.append(
+            {
+                "factor": factor_label,
+                "weight": weight,
+                "values": [
+                    {
+                        "option_id": option["option_id"],
+                        "transport_mode": (
+                            option["transport_mode"]
+                        ),
+                        "score": option[score_key],
+                        "contribution": option[
+                            contribution_key
+                        ],
+                    }
+                    for option in compared
+                ],
+            }
+        )
+
+    # Trade-offs: where an alternative is genuinely stronger
+    # than the recommendation on an individual factor, say
+    # so factually. The recommendation can still win because
+    # the weighted total favours it.
+
+    trade_offs = []
+
+    for option in alternatives:
+
+        stronger_factors = []
+
+        for factor_label, score_key, _weight_key, _contribution_key in (
+            RATIONALE_FACTORS
+        ):
+
+            if option[score_key] > recommendation[score_key]:
+
+                stronger_factors.append(factor_label)
+
+        if stronger_factors:
+
+            trade_offs.append(
+                {
+                    "option_id": option["option_id"],
+                    "transport_mode": option["transport_mode"],
+                    "stronger_factors": stronger_factors,
+                }
+            )
+
+    # Confidence semantics: the engine derives the label
+    # from the separation between the recommendation's score
+    # and the next-best alternative (sole feasible option is
+    # reported High). Expose that basis explicitly so the
+    # label is not misread as a probability of success.
+
+    if not alternatives:
+
+        confidence_basis = (
+            "High confidence reflects a single feasible "
+            "recovery option, not a probability of success."
+        )
+
+    else:
+
+        next_best_score = max(
+            option["decision_score"]
+            for option in alternatives
+        )
+
+        score_gap = (
+            recommendation["decision_score"]
+            - next_best_score
+        )
+
+        confidence_basis = (
+            "Derived from the separation between the "
+            "recommended option's score and the next-best "
+            f"alternative ({score_gap:.2f} points). It is "
+            "not a probability of success."
+        )
+
+    return {
+        "weights": {
+            "cost": weights["cost"],
+            "transit": weights["transit"],
+            "risk": weights["risk"],
+            "priority_alignment": (
+                weights["priority_alignment"]
+            ),
+        },
+        "factor_breakdown": factor_breakdown,
+        "trade_offs": trade_offs,
+        "confidence_basis": confidence_basis,
+    }
+
+
 def get_recovery_assessment(
     connection,
     exception_id,
@@ -144,11 +321,14 @@ def get_recovery_assessment(
 
     When the engine has a feasible option to recommend,
     the assessment carries the recommendation and its
-    alternatives exactly as the review does. When it has
-    none, the previously generated options - feasible and
-    infeasible - are included as evaluated_options, each
-    with its own operational data (mode, carrier, cost,
-    transit, risk) and its feasibility verdict. The engines
+    alternatives exactly as the review does, plus a
+    structured rationale (weights, per-factor breakdown,
+    trade-offs, confidence basis) projected from the
+    engine's own output. When it has none, the previously
+    generated options - feasible and infeasible - are
+    included as evaluated_options, each with its own
+    operational data (mode, carrier, cost, transit, risk)
+    and its feasibility verdict. The engines
     do not persist a granular rejection reason, so none is
     invented here: the verdict and the option's operational
     data are the strongest truthful information available.
@@ -170,11 +350,15 @@ def get_recovery_assessment(
             "recommendation": review["recommendation"],
             "alternatives": review["alternatives"],
             "evaluated_options": [],
+            "rationale": get_recommendation_rationale(
+                review,
+            ),
         }
 
     return {
         "recommendation": None,
         "alternatives": [],
+        "rationale": None,
         "evaluated_options": [
             {
                 "option_id": option["option_id"],

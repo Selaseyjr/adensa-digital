@@ -52,12 +52,23 @@ RECOVERY_EXECUTION_OFFSET_DAYS = 1
 # DECISION ENGINE CONFIGURATION
 # ==================================================
 
+# The decision engine computes the overall score as a
+# weighted combination of the four factor scores, so the
+# weights are only meaningful as a complete, normalized
+# policy. Fail fast at import time if the configuration
+# drifts from that assumption.
+
 DECISION_WEIGHTS = {
     "cost": 0.25,
     "transit": 0.30,
     "risk": 0.25,
     "priority_alignment": 0.20,
 }
+
+assert abs(sum(DECISION_WEIGHTS.values()) - 1.0) < 1e-9, (
+    "DECISION_WEIGHTS must sum to 1.0; the decision score "
+    "is a weighted combination of the four factor scores."
+)
 
 
 # Cost benchmarks in EUR

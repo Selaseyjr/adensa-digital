@@ -279,8 +279,10 @@ def test_actionable_exception_renders_recommendation():
         assert "Recommended Recovery" in subheaders
         assert "Recovery Options Comparison" in subheaders
 
-        # The recommendation and the ranked alternatives.
-        assert len(app_test.dataframe) == 2
+        # The recommendation comparison table, the
+        # Checkpoint T rationale factor-breakdown table and
+        # the Checkpoint R operational-history table.
+        assert len(app_test.dataframe) == 3
 
         # Checkpoint Q: the investigation view opens with the
         # recorded issue and shows the decision factors.
@@ -320,6 +322,51 @@ def test_actionable_exception_renders_recommendation():
         verdicts = comparison_table["Option"].tolist()
         assert verdicts[0] == "Recommended"
         assert "Alternative" in verdicts
+
+        # Checkpoint T: the rationale section exposes the
+        # policy weights, the per-factor breakdown and the
+        # confidence basis - all from the service projection.
+        assert "Recommendation Rationale" in subheaders
+
+        factor_table = [
+            frame.value
+            for frame in app_test.dataframe
+            if "Factor" in frame.value.columns
+        ][0]
+
+        assert (
+            factor_table["Factor"].tolist()
+            == [
+                "Cost fit",
+                "Transit fit",
+                "Risk fit",
+                "Priority fit",
+            ]
+        )
+
+        for column in (
+            "Recommended score",
+            "Recommended weighted",
+            "Alternative 1 score",
+            "Alternative 1 weighted",
+            "Weight",
+        ):
+            assert column in factor_table.columns
+
+        weight_texts = _text_values(app_test.caption)
+
+        assert any(
+            "Decision policy" in (text or "")
+            and "Cost 25%" in (text or "")
+            and "Transit 30%" in (text or "")
+            for text in weight_texts
+        ), "policy weights must be shown from configuration"
+
+        assert any(
+            "Recommendation confidence" in (text or "")
+            and "not a probability of success" in (text or "")
+            for text in weight_texts
+        ), "confidence basis must accompany the label"
 
         assert _widget(
             app_test, "text_input", "approver_"

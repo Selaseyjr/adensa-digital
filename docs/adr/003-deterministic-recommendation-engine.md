@@ -31,7 +31,18 @@ against operational constraints; the engine only ranks feasible
 options. Confidence is derived from the competitive situation: a
 sole feasible option yields `High`; otherwise the gap between the
 best and second-best score maps to `High` (≥ 15), `Medium` (≥ 7) or
-`Low`. Each recommendation carries a human-readable reason.
+`Low`. Each recommendation carries a human-readable reason stating
+that factual basis (score separation), so the label is never
+mistaken for a probability of success.
+
+The full rationale is exposed to clients as a structured service
+projection: the configured policy weights, each factor's raw fit
+and weighted contribution for the recommendation and every
+alternative, the factor-level trade-offs where an alternative
+genuinely scores higher, and the basis of the confidence label.
+The projection consumes the engine's own output and the single
+`DECISION_WEIGHTS` source; it never recomputes or duplicates the
+scoring model.
 
 There is no LLM, machine-learning model or probabilistic component
 anywhere in the recommendation path.
@@ -80,6 +91,9 @@ Trade-offs:
 
 ## Current implementation
 
-`app/decision_engine.py` (scoring, confidence, reason),
+`app/decision_engine.py` (scoring, weighted contributions,
+confidence, reason),
 `app/config.py` (`DECISION_WEIGHTS`, cost benchmarks),
-`app/generate_recovery_options.py` (feasibility evaluation upstream).
+`app/generate_recovery_options.py` (feasibility evaluation upstream),
+`app/services.py` (`get_recommendation_rationale` — structured
+explainability projection).

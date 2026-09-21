@@ -1161,9 +1161,99 @@ def main():
                 st.caption(
                     "Factor scores (0–100: higher is better) come "
                     "from the decision engine's benchmarks; the "
-                    "decision score is their weighted combination "
-                    "(cost 0.25, transit 0.30, risk 0.25, priority "
-                    "0.20)."
+                    "decision score is their weighted combination. "
+                    "The configured policy weights are shown below."
+                )
+
+            # --------------------------------------------------
+            # RECOMMENDATION RATIONALE
+            #
+            # Structured, deterministic explanation of the
+            # recommendation: the configured policy weights,
+            # each factor's raw fit and weighted contribution
+            # for the recommendation and every alternative, the
+            # factual trade-offs, and the basis of the
+            # confidence label. Everything comes from the
+            # service projection; nothing is recomputed here.
+            # --------------------------------------------------
+
+            rationale = assessment.get("rationale")
+
+            if rationale:
+
+                st.subheader("Recommendation Rationale")
+
+                weights = rationale["weights"]
+
+                st.caption(
+                    "Decision policy (from application "
+                    "configuration): "
+                    f"Cost {weights['cost']:.0%} · Transit "
+                    f"{weights['transit']:.0%} · Risk "
+                    f"{weights['risk']:.0%} · Priority "
+                    f"{weights['priority_alignment']:.0%}. "
+                    "The overall decision score is the weighted "
+                    "combination of the four factor scores."
+                )
+
+                factor_rows = []
+
+                for factor in rationale["factor_breakdown"]:
+
+                    factor_row = {
+                        "Factor": factor["factor"],
+                        "Weight": f"{factor['weight']:.0%}",
+                    }
+
+                    for position, value in enumerate(
+                        factor["values"]
+                    ):
+
+                        option_prefix = (
+                            "Recommended"
+                            if position == 0
+                            else f"Alternative {position}"
+                        )
+
+                        factor_row[
+                            f"{option_prefix} score"
+                        ] = f"{value['score']:.0f}"
+
+                        factor_row[
+                            f"{option_prefix} weighted"
+                        ] = f"{value['contribution']:.2f}"
+
+                    factor_rows.append(factor_row)
+
+                st.dataframe(
+                    factor_rows,
+                    hide_index=True,
+                    width="stretch",
+                )
+
+                st.caption(
+                    "Score is the raw factor fit (0–100, higher "
+                    "is better); weighted is score × policy "
+                    "weight. The weighted contributions of one "
+                    "option sum to its decision score."
+                )
+
+                for trade_off in rationale["trade_offs"]:
+
+                    st.write(
+                        f"**Trade-off:** "
+                        f"{trade_off['transport_mode']} "
+                        f"({trade_off['option_id']}) scores higher "
+                        "on "
+                        f"{' and '.join(trade_off['stronger_factors'])} "
+                        "but the recommended option wins on the "
+                        "weighted overall score."
+                    )
+
+                st.caption(
+                    f"Recommendation confidence: "
+                    f"{recovery['confidence']}. "
+                    f"{rationale['confidence_basis']}"
                 )
 
             st.divider()
