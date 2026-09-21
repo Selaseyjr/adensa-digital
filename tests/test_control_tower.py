@@ -631,3 +631,309 @@ def test_other_control_tower_counts_are_full_population(
 
     finally:
         connection.close()
+
+
+# ==================================================
+# F. FOLLOW-UP SEMANTICS (Checkpoint S)
+# ==================================================
+
+def test_follow_up_classification_states_are_distinguishable(
+    seeded_database,
+):
+    """
+    The investigation-state classification distinguishes
+    Decision required, Awaiting execution, Executed — still
+    open and Resolved, using only persisted evidence.
+    """
+
+    connection = seeded_database
+
+    try:
+        _create_action(connection)
+
+        pending = services.classify_investigation_state(
+            connection,
+            "EXC-900002",
+        )
+        assert pending["state"] == "Decision required"
+        assert pending["follow_up_required"] is False
+
+        services.approve_recovery(
+            connection,
+            "ACT-000001",
+            "CT Tester",
+        )
+
+        approved = services.classify_investigation_state(
+            connection,
+            "EXC-900002",
+        )
+        assert approved["state"] == "Awaiting execution"
+        assert approved["follow_up_required"] is False
+
+        # Execute the recovery: the fixture's recorded dates
+        # leave the exception open, so this becomes the
+        # follow-up case.
+        outcome = services.execute_approved_recovery(
+            connection,
+            "ACT-000001",
+        )
+        assert outcome["exception_status"] == "Open"
+
+        executed = services.classify_investigation_state(
+            connection,
+            "EXC-900002",
+        )
+        assert executed["state"] == "Executed — still open"
+        assert executed["follow_up_required"] is True
+
+        # Resolve through the manual path (allowed once no
+        # action is pending/approved) and re-classify.
+        _resolve_via_manual_path(connection, "EXC-900002")
+
+        resolved = services.classify_investigation_state(
+            connection,
+            "EXC-900002",
+        )
+        assert resolved["state"] == "Resolved"
+        assert resolved["follow_up_required"] is False
+
+    finally:
+        connection.close()
+
+
+def test_follow_up_reason_quotes_persisted_evidence(
+    seeded_database,
+):
+    """
+    The follow-up reason is the factual operational evidence
+    — recorded estimated arrival versus required delivery —
+    not a vague verdict.
+    """
+
+    connection = seeded_database
+
+    try:
+        _create_action(connection)
+
+        services.approve_recovery(
+            connection,
+            "ACT-000001",
+            "CT Tester",
+        )
+        services.execute_approved_recovery(
+            connection,
+            "ACT-000001",
+        )
+
+        state = services.classify_investigation_state(
+            connection,
+            "EXC-900002",
+        )
+
+        # The fixture's persisted dates: the recovery's
+        # recorded arrival 2026-09-17 against the required
+        # delivery 2026-09-15.
+        assert "2026-09-17" in state["reason"]
+        assert "2026-09-15" in state["reason"]
+        assert "remains later than required delivery" in (
+            state["reason"]
+        )
+        assert "remains open after recovery execution" in (
+            state["reason"]
+        )
+
+    finally:
+        connection.close()
+
+
+def test_control_tower_reports_follow_up_population(
+    seeded_database,
+):
+    """
+    The control tower reports follow-up as a full-population
+    count (matching the Open Exceptions population rule) and
+    the follow-up queue as a bounded view, while the P
+    partition semantics of Actionable/Monitoring stay
+    intact.
+    """
+
+    connection = seeded_database
+
+    try:
+        _create_action(connection)
+
+        services.approve_recovery(
+            connection,
+            "ACT-000001",
+            "CT Tester",
+        )
+
+        # Before execution: no follow-up anywhere.
+        summary = services.get_control_tower_summary(connection)
+        assert summary["follow_up_required"] == 0
+        assert summary["follow_up_queue"] == []
+
+        services.execute_approved_recovery(
+            connection,
+            "ACT-000001",
+        )
+
+        summary = services.get_control_tower_summary(connection)
+
+        assert summary["follow_up_required"] == 1
+
+        queue = summary["follow_up_queue"]
+        assert len(queue) == 1
+        assert queue[0]["exception_id"] == "EXC-900002"
+        assert "2026-09-17" in queue[0]["reason"]
+        assert "2026-09-15" in queue[0]["reason"]
+        assert queue[0]["action_id"] == "ACT-000001"
+
+        # The follow-up count is full-population: push the
+        # open population far past the inbox cap and confirm
+        # the count is unaffected.
+        rows = []
+
+        for index in range(1, 121):
+
+            rows.append(
+                (
+                    f"EXC-940{index:03d}",
+                    "SHP-900001",
+                    "Delivery Delay",
+                    "Low",
+                    "2026-09-01 12:00:00",
+                    f"Follow-up population fixture {index}",
+                    100,
+                    "Open",
+                    None,
+                ),
+            )
+
+        exceptions_repo.insert_exceptions(connection, rows)
+        connection.commit()
+
+        summary = services.get_control_tower_summary(connection)
+
+        assert summary["follow_up_required"] == 1
+        assert summary["open_exceptions"] == 122
+
+        # The P partition of the visible surface is unchanged.
+        inbox = services.get_exception_inbox(connection)
+        assert (
+            summary["actionable_exceptions"]
+            + summary["monitoring_exceptions"]
+            == len(inbox)
+        )
+
+    finally:
+        connection.close()
+
+
+def test_resolved_exception_is_not_follow_up_required(
+    seeded_database,
+):
+    """
+    A resolved exception never appears in the follow-up
+    population or queue — follow-up is defined only for the
+    open population.
+    """
+
+    connection = seeded_database
+
+    try:
+        _create_action(connection)
+
+        services.approve_recovery(
+            connection,
+            "ACT-000001",
+            "CT Tester",
+        )
+        services.execute_approved_recovery(
+            connection,
+            "ACT-000001",
+        )
+
+        # Resolve through the manual path.
+        _resolve_via_manual_path(connection, "EXC-900002")
+
+        summary = services.get_control_tower_summary(connection)
+
+        assert summary["follow_up_required"] == 0
+        assert summary["follow_up_queue"] == []
+
+        assert any(
+            row["exception_id"] == "EXC-900002"
+            for row in summary["recently_resolved"]
+        )
+
+    finally:
+        connection.close()
+
+
+def test_follow_up_exception_surfaces_in_inbox_triage(
+    seeded_database,
+):
+    """
+    An executed-but-still-open exception is marked as
+    follow-up required in the inbox triage data, and the
+    newest actionable work still precedes it (existing
+    actionable-first ordering is preserved).
+    """
+
+    connection = seeded_database
+
+    try:
+        _create_action(connection)
+
+        services.approve_recovery(
+            connection,
+            "ACT-000001",
+            "CT Tester",
+        )
+        services.execute_approved_recovery(
+            connection,
+            "ACT-000001",
+        )
+
+        # A fresh actionable exception detected after the
+        # execution — newest actionable work.
+        exceptions_repo.insert_exceptions(
+            connection,
+            [
+                (
+                    "EXC-900006",
+                    "SHP-900002",
+                    "Delivery Delay",
+                    "High",
+                    "2026-09-12 12:00:00",
+                    "Newer actionable exception",
+                    1500,
+                    "Open",
+                    None,
+                ),
+            ],
+        )
+        _generate_options(connection)
+
+        inbox = services.get_exception_inbox(connection)
+
+        by_id = {
+            row["exception_id"]: row for row in inbox
+        }
+
+        assert (
+            by_id["EXC-900002"]["executed_still_open"] == 1
+        )
+
+        ids = [row["exception_id"] for row in inbox]
+
+        # Actionable-first preserved: the newer actionable
+        # exception outranks the executed-still-open one.
+        assert ids.index("EXC-900006") < ids.index(
+            "EXC-900002"
+        )
+
+    finally:
+        connection.close()

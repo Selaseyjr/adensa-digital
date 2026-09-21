@@ -326,7 +326,7 @@ def main():
                 ),
             )
 
-        col5, col6, col7 = st.columns(3)
+        col5, col6, col7, col8 = st.columns(4)
 
         with col5:
             st.metric(
@@ -339,6 +339,17 @@ def main():
 
         with col6:
             st.metric(
+                "Follow-up Required",
+                summary["follow_up_required"],
+                help=(
+                    "Open exceptions whose recovery has already "
+                    "been executed without resolving them, "
+                    "across the entire open population."
+                ),
+            )
+
+        with col7:
+            st.metric(
                 "Critical Open",
                 summary["critical_exceptions"],
                 help=(
@@ -347,7 +358,7 @@ def main():
                 ),
             )
 
-        with col7:
+        with col8:
             st.metric(
                 "Recently Resolved",
                 len(summary["recently_resolved"]),
@@ -461,6 +472,48 @@ def main():
             st.divider()
 
         # --------------------------------------------------
+        # FOLLOW-UP REQUIRED
+        # --------------------------------------------------
+
+        follow_up_queue = summary["follow_up_queue"]
+
+        if follow_up_queue:
+
+            st.header("Follow-up Required")
+
+            st.caption(
+                "Executed recoveries that did not resolve the "
+                "exception — the recorded arrival still misses "
+                "the required delivery date."
+            )
+
+            follow_up_rows = [
+                {
+                    "Exception": (
+                        entry["exception_id"]
+                    ),
+                    "Severity": entry["severity"],
+                    "Action": entry["action_id"],
+                    "Evidence": entry["reason"],
+                }
+                for entry in follow_up_queue
+            ]
+
+            st.dataframe(
+                follow_up_rows,
+                hide_index=True,
+                width="stretch",
+            )
+
+            st.caption(
+                "Bounded view of the follow-up work queue; the "
+                "Follow-up Required count above is the full "
+                "open population."
+            )
+
+            st.divider()
+
+        # --------------------------------------------------
         # RECENTLY RESOLVED
         # --------------------------------------------------
 
@@ -545,9 +598,13 @@ def main():
                     f"{row['severity']} · "
                     f"{row['exception_type']} · "
                     + (
-                        "Actionable"
-                        if row["feasible_option_count"]
-                        else "No feasible recovery"
+                        "Follow-up required"
+                        if row["executed_still_open"]
+                        else (
+                            "Actionable"
+                            if row["feasible_option_count"]
+                            else "No feasible recovery"
+                        )
                     )
                 ),
             )
@@ -1287,9 +1344,24 @@ def main():
 
                 elif action["status"] == EXECUTED:
 
-                    st.success(
-                        "This recovery action has already been executed."
+                    state = services.classify_investigation_state(
+                        connection,
+                        selected_exception_id,
                     )
+
+                    if state and state["follow_up_required"]:
+
+                        st.warning(
+                            f"Executed — still open. "
+                            f"{state['reason']}"
+                        )
+
+                    else:
+
+                        st.success(
+                            "This recovery action has already "
+                            "been executed."
+                        )
 
                 elif action["status"] == REJECTED:
 

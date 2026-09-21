@@ -859,3 +859,121 @@ def test_history_shows_executed_still_open_honestly():
 
     finally:
         tmp.cleanup()
+
+
+# ==================================================
+# CHECKPOINT S — FOLLOW-UP & MONITORING IN THE UI
+# ==================================================
+
+def test_follow_up_metric_and_section_render():
+    """
+    After a recovery is executed without resolving the
+    exception, the control tower reports the follow-up
+    population and renders the Follow-up Required section
+    with the factual persisted evidence.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        # Before execution nothing requires follow-up and
+        # the section is not rendered.
+        assert _metric(app_test, "Follow-up Required") == "0"
+        assert "Follow-up Required" not in (
+            _text_values(app_test.header)
+        )
+
+        _select_exception(app_test, "EXC-900002")
+
+        _widget(app_test, "text_input", "approver_").set_value(
+            "Follow-up Planner"
+        )
+        _widget(app_test, "button", "approve_").click().run()
+        _widget(app_test, "button", "execute_").click().run()
+
+        assert not app_test.exception
+
+        # The follow-up count is a full-population metric.
+        assert _metric(app_test, "Follow-up Required") == "1"
+
+        # The bounded Follow-up Required section renders with
+        # the persisted evidence, not a vague verdict.
+        assert "Follow-up Required" in (
+            _text_values(app_test.header)
+        )
+
+        follow_up_table = [
+            frame.value
+            for frame in app_test.dataframe
+            if "Evidence" in frame.value.columns
+        ][0]
+
+        row = follow_up_table.iloc[0]
+
+        assert row["Exception"] == "EXC-900002"
+        assert row["Action"] == "ACT-000001"
+        assert "2026-09-17" in row["Evidence"]
+        assert "2026-09-15" in row["Evidence"]
+        assert "remains later than required delivery" in (
+            row["Evidence"]
+        )
+
+    finally:
+        tmp.cleanup()
+
+
+def test_investigation_shows_executed_still_open_state():
+    """
+    Re-opening an executed-but-still-open exception states
+    the operational state plainly: Executed — still open,
+    with the recorded arrival versus required delivery as
+    the reason. It is never presented as resolved.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        _select_exception(app_test, "EXC-900002")
+
+        _widget(app_test, "text_input", "approver_").set_value(
+            "State Planner"
+        )
+        _widget(app_test, "button", "approve_").click().run()
+        _widget(app_test, "button", "execute_").click().run()
+
+        assert not app_test.exception
+
+        warnings = _text_values(app_test.warning)
+
+        assert any(
+            "Executed — still open" in (value or "")
+            for value in warnings
+        ), "the executed-still-open state must be stated"
+
+        evidence = [
+            value
+            for value in warnings
+            if "remains later than required delivery" in (value or "")
+        ]
+        assert evidence, (
+            "the state banner must carry the persisted evidence"
+        )
+        assert "2026-09-17" in evidence[0]
+        assert "2026-09-15" in evidence[0]
+
+        # The triage label in the inbox marks the exception
+        # as follow-up work rather than plain actionable.
+        options = list(_inbox_selectbox(app_test).options)
+
+        assert any(
+            "EXC-900002" in option
+            and "Follow-up required" in option
+            for option in options
+        )
+
+    finally:
+        tmp.cleanup()

@@ -354,15 +354,19 @@ Microsoft 365 / Power Automate tenant flow is **not yet deployed**.
 Every control-tower figure has a defined population, also stated in
 the UI's metric tooltips:
 
-- **Open Exceptions, Pending Decisions, Awaiting Execution, Critical
-  Open** are full-population counts over the entire operational
-  database.
+- **Open Exceptions, Pending Decisions, Awaiting Execution,
+  Follow-up Required, Critical Open** are full-population counts
+  over the entire operational database.
 - **Actionable** and **Monitoring** are bounded inbox work-queue
   surface metrics: together they partition the visible Exception
   Inbox queue (actionable = rows with a feasible recovery option,
   monitoring = rows without). They deliberately do not describe the
   entire open population — on a large dataset the total actionable
   population is larger than the inbox can display.
+- **Follow-up Required** counts open exceptions whose recovery has
+  already been executed without resolving them, across the entire
+  open population; the Follow-up Required section below the inbox
+  is a bounded view of that work queue, newest detection first.
 - **Recently Resolved** shows the most recent resolutions (bounded
   view, newest first), not every historical resolution.
 

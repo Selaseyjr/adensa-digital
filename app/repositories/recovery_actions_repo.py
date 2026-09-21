@@ -453,7 +453,9 @@ def get_execution_result(
             s.shipment_id,
             s.transport_mode,
             s.carrier_id,
-            s.estimated_arrival
+            s.estimated_arrival,
+
+            o.required_delivery_date
 
         FROM recovery_actions ra
 
@@ -462,6 +464,9 @@ def get_execution_result(
 
         JOIN shipments s
             ON e.shipment_id = s.shipment_id
+
+        JOIN orders o
+            ON s.order_id = o.order_id
 
         WHERE ra.action_id = ?
         """,

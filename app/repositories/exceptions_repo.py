@@ -54,6 +54,97 @@ def count_open_exceptions(connection):
     return cursor.fetchone()[0]
 
 
+def count_open_follow_up_required(connection):
+    """
+    Count open exceptions whose latest recovery action has
+    been EXECUTED — system recovery has been attempted but
+    the exception is still open, so planner follow-up is
+    required (Checkpoint S).
+
+    Full-population read over the open exceptions, matching
+    the population of count_open_exceptions: the inbox cap
+    is deliberately not involved.
+    """
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM exceptions e
+        WHERE e.resolution_status = 'Open'
+          AND EXISTS (
+              SELECT 1
+              FROM recovery_actions ra
+              WHERE ra.exception_id = e.exception_id
+                AND ra.status = 'Executed'
+          )
+        """
+    )
+
+    return cursor.fetchone()[0]
+
+
+def get_follow_up_required_exceptions(
+    connection,
+    limit,
+):
+    """
+    Return the open exceptions that require planner
+    follow-up, newest detection first, up to the supplied
+    limit.
+
+    Follow-up rule (Checkpoint S): an open exception whose
+    latest recovery action has been executed. The execution
+    has already happened and did not resolve the exception,
+    so renewed planner attention is required. The reason
+    details are projected from the same persisted evidence:
+    the recorded estimated arrival against the required
+    delivery date, plus the action's execution timestamp.
+
+    Read-only; resolves no state and invents nothing.
+    """
+
+    cursor = connection.cursor()
+
+    exceptions = cursor.execute(
+        """
+        SELECT
+            e.exception_id,
+            e.severity,
+            e.exception_type,
+            e.detected_at,
+            ra.action_id,
+            ra.executed_at,
+            s.estimated_arrival,
+            s.shipment_id,
+            o.required_delivery_date,
+            (
+                SELECT COUNT(*)
+                FROM recovery_options ro
+                WHERE ro.exception_id = e.exception_id
+                  AND ro.feasible = 1
+            ) AS feasible_option_count
+        FROM exceptions e
+        JOIN shipments s
+            ON e.shipment_id = s.shipment_id
+        JOIN orders o
+            ON s.order_id = o.order_id
+        JOIN recovery_actions ra
+            ON ra.exception_id = e.exception_id
+            AND ra.status = 'Executed'
+        WHERE e.resolution_status = 'Open'
+        ORDER BY
+            e.detected_at DESC,
+            e.exception_id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+    return exceptions
+
+
 def count_open_critical_exceptions(connection):
     """
     Count open exceptions with Critical severity.
@@ -128,7 +219,14 @@ def get_open_exceptions_inbox(connection):
                 FROM recovery_options ro
                 WHERE ro.exception_id = e.exception_id
                   AND ro.feasible = 1
-            ) AS feasible_option_count
+            ) AS feasible_option_count,
+            (
+                SELECT ra.status
+                FROM recovery_actions ra
+                WHERE ra.exception_id = e.exception_id
+                  AND ra.status = 'Executed'
+                LIMIT 1
+            ) IS NOT NULL AS executed_still_open
         FROM exceptions e
         JOIN shipments s
             ON e.shipment_id = s.shipment_id

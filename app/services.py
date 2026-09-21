@@ -1117,6 +1117,173 @@ def run_data_arrival_simulation(connection):
 # CONTROL-TOWER SUMMARY
 # ==================================================
 
+# ==================================================
+# OPERATIONAL STATE CLASSIFICATION (Checkpoint S)
+# ==================================================
+
+def classify_investigation_state(
+    connection,
+    exception_id,
+):
+    """
+    Classify an investigated exception's current operational
+    state from persisted evidence only, so the planner can
+    distinguish what needs what kind of attention.
+
+    States (mutually exclusive, checked in order):
+
+    - 'Resolved': the persisted resolution status is
+      Resolved (via system execution or a recorded manual
+      intervention outcome).
+    - 'Awaiting execution': the latest recovery action is
+      Approved — a human has decided; execution remains.
+    - 'Executed — still open': the latest recovery action
+      is Executed but the exception remains open, with the
+      persisted arrival-versus-required evidence for why it
+      is still open. This situation requires follow-up.
+    - 'Decision required': the latest recovery action is
+      Pending Approval.
+    - 'No system recovery available': no recovery action
+      exists (no feasible system recovery was found, or
+      none was generated).
+
+    Returns None when the exception does not exist. No
+    state is invented: every branch reads a persisted
+    column, and the follow-up reason quotes the recorded
+    dates rather than a vague verdict.
+    """
+
+    exception = exceptions_repo.get_exception_resolution_status(
+        connection,
+        exception_id,
+    )
+
+    if exception is None:
+        return None
+
+    if exception["resolution_status"] == "Resolved":
+
+        return {
+            "state": "Resolved",
+            "follow_up_required": False,
+            "reason": (
+                "The persisted operational evidence records "
+                "this exception as resolved."
+            ),
+        }
+
+    action = (
+        recovery_actions_repo
+        .get_latest_action_for_exception(
+            connection,
+            exception_id,
+        )
+    )
+
+    if action is None:
+
+        return {
+            "state": "No system recovery available",
+            "follow_up_required": False,
+            "reason": (
+                "No system recovery action exists for this "
+                "exception."
+            ),
+        }
+
+    if action["status"] == APPROVED:
+
+        return {
+            "state": "Awaiting execution",
+            "follow_up_required": False,
+            "reason": (
+                f"Recovery action {action['action_id']} has "
+                f"been approved and is ready for execution."
+            ),
+        }
+
+    if action["status"] == EXECUTED:
+
+        execution = recovery_actions_repo.get_execution_result(
+            connection,
+            action["action_id"],
+        )
+
+        return {
+            "state": "Executed — still open",
+            "follow_up_required": True,
+            "reason": (
+                f"Recovery executed, but estimated arrival "
+                f"{execution['estimated_arrival']} remains "
+                f"later than required delivery "
+                f"{execution['required_delivery_date']}. "
+                f"Exception remains open after recovery "
+                f"execution."
+            ),
+        }
+
+    return {
+        "state": "Decision required",
+        "follow_up_required": False,
+        "reason": (
+            f"Recovery action {action['action_id']} is "
+            f"awaiting a planner approval or rejection "
+            f"decision."
+        ),
+    }
+
+
+def get_follow_up_queue(
+    connection,
+    limit=10,
+):
+    """
+    Return the follow-up work queue: open exceptions whose
+    recovery has already been executed without resolving
+    them, newest detection first, with the factual reason
+    for each entry.
+
+    Bounded work-queue surface (Checkpoint P semantics
+    apply): the full-population count of this population is
+    reported separately by get_control_tower_summary via
+    count_open_follow_up_required.
+    """
+
+    rows = exceptions_repo.get_follow_up_required_exceptions(
+        connection,
+        limit,
+    )
+
+    queue = []
+
+    for row in rows:
+
+        queue.append(
+            {
+                "exception_id": row["exception_id"],
+                "severity": row["severity"],
+                "exception_type": row["exception_type"],
+                "detected_at": row["detected_at"],
+                "action_id": row["action_id"],
+                "executed_at": row["executed_at"],
+                "estimated_arrival": row["estimated_arrival"],
+                "required_delivery_date": row[
+                    "required_delivery_date"
+                ],
+                "actionable": row["feasible_option_count"] > 0,
+                "reason": (
+                    f"Recovery {row['action_id']} executed "
+                    f"{row['executed_at']}, but estimated "
+                    f"arrival {row['estimated_arrival']} "
+                    f"remains later than required delivery "
+                    f"{row['required_delivery_date']}."
+                ),
+            }
+        )
+
+    return queue
+
+
 def get_control_tower_summary(
     connection,
     resolved_limit=10,
@@ -1233,5 +1400,12 @@ def get_control_tower_summary(
         "critical_exceptions":
             exceptions_repo
             .count_open_critical_exceptions(connection),
+        "follow_up_required":
+            exceptions_repo
+            .count_open_follow_up_required(connection),
+        "follow_up_queue": get_follow_up_queue(
+            connection,
+            resolved_limit,
+        ),
         "recently_resolved": recently_resolved,
     }
