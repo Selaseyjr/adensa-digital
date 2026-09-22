@@ -99,9 +99,19 @@ def get_exception_inbox(connection):
     and rows are ordered actionable-first inside each
     severity class. The count is retrieved operational
     data; the UI renders the actionable/monitoring wording.
+
+    Rows are returned as plain dictionaries so no client —
+    UI, API or CLI — depends on the persistence layer's row
+    type (the versioned application-boundary contract,
+    ADR-011).
     """
 
-    return exceptions_repo.get_open_exceptions_inbox(connection)
+    return [
+        dict(row)
+        for row in exceptions_repo.get_open_exceptions_inbox(
+            connection,
+        )
+    ]
 
 
 # ==================================================
@@ -134,12 +144,19 @@ def get_latest_action(
     """
     Return the most recent recovery action for an
     exception, or None.
+
+    The action is returned as a plain dictionary so no
+    client depends on the persistence layer's row type
+    (the versioned application-boundary contract,
+    ADR-011).
     """
 
-    return recovery_actions_repo.get_latest_action_for_exception(
+    action = recovery_actions_repo.get_latest_action_for_exception(
         connection,
         exception_id,
     )
+
+    return dict(action) if action is not None else None
 
 
 # Factor columns used in the rationale projection, in a

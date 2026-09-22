@@ -19,6 +19,28 @@ ADENSA_API_KEY = os.environ.get("ADENSA_API_KEY")
 
 
 # ==================================================
+# API CORS CONFIGURATION
+# ==================================================
+
+# Origins allowed to call the versioned application API
+# (ADR-011) from a browser — the separately hosted
+# operational frontend. Sourced from the environment as a
+# comma-separated list; empty by default, so the API is
+# browser-origin-locked to whatever the deployment configures
+# and never silently wide open ("*"). Machine-to-machine
+# callers (Power Automate, the CLI) are unaffected: CORS only
+# constrains browsers.
+
+_cors_origins = os.environ.get("ADENSA_CORS_ORIGINS", "")
+
+ADENSA_CORS_ORIGINS = [
+    origin.strip()
+    for origin in _cors_origins.split(",")
+    if origin.strip()
+]
+
+
+# ==================================================
 # PROJECT PATHS
 # ==================================================
 

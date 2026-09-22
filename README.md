@@ -94,9 +94,12 @@ An important operational honesty rule: **executed does not necessarily mean reso
 
 The FastAPI boundary (`app/api.py`) exposes the service layer over HTTP. All operational endpoints require an `X-API-Key` header; only the health probe is public. Keys are sourced from the environment (`ADENSA_API_KEY`); an unconfigured key fails closed.
 
+**Machine-to-machine integration API** (the Power Automate contract, kept unchanged):
+
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Liveness (public) |
+| GET | `/ready` | Readiness — verifies the configured database is reachable (public) |
 | GET | `/metrics` | Operational KPI counts |
 | GET | `/exceptions` | Open-exception inbox with severity and actionability |
 | GET | `/exceptions/{exception_id}/review` | Decision-engine review: recommendation, alternatives, infeasible-option assessment |
@@ -105,7 +108,23 @@ The FastAPI boundary (`app/api.py`) exposes the service layer over HTTP. All ope
 | POST | `/exceptions/{exception_id}/reject` | Record a planner rejection |
 | POST | `/recovery-actions/{action_id}/execute` | Execute an approved recovery |
 
-Domain errors map to HTTP semantics: missing resources to 404, invalid workflow transitions and domain-rule violations to 409, with the engine's message preserved. See `docs/api-authentication.md` for the authentication contract.
+**Versioned application boundary** (`/v1` — the workspace capability surface, ADR-011):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/v1/control-tower/summary` | Control-tower projection: bounded-queue and full-population metrics, follow-up and resolved queues |
+| GET | `/v1/exceptions/inbox` | The operational work queue (actionable first, then newest detected) |
+| GET | `/v1/exceptions/{exception_id}/context` | Investigation context (Situation & Impact) |
+| GET | `/v1/exceptions/{exception_id}/state` | Persisted-evidence investigation state |
+| GET | `/v1/exceptions/{exception_id}/history` | Chronological operational history |
+| GET | `/v1/exceptions/{exception_id}/assessment` | Recovery assessment: recommendation, alternatives, rationale — or evaluated options explaining why none exists |
+| GET | `/v1/exceptions/{exception_id}/sustainability` | Informational emissions comparison (or the structured unavailable state) |
+| GET | `/v1/exceptions/{exception_id}/interventions` | Recorded manual interventions |
+| POST | `/v1/exceptions/{exception_id}/manual-resolution` | Record a planner-performed manual resolution |
+| POST | `/v1/operations/refresh` | Run the operational pipeline (detect → options → actions) |
+| POST | `/v1/operations/simulate-arrival` | Create one controlled simulated shipment arrival |
+
+Every operational read under `/v1` returns an explicit Pydantic schema mirroring the service output, so the whole workspace capability set is documented in the generated OpenAPI. Service results are ordinary JSON-compatible structures — no persistence-layer types cross the boundary. Domain errors map to HTTP semantics: missing resources to 404, invalid workflow transitions and domain-rule violations to 409, with the engine's message preserved. See `docs/api-authentication.md` for the authentication contract.
 
 ## CLI
 
@@ -207,15 +226,32 @@ python -m app.generate_data
 
 | Variable | Purpose |
 |---|---|
-| `ADENSA_API_KEY` | API key required by all operational FastAPI endpoints. Supplied through the environment; never hard-coded or committed. If unset, the API fails closed for protected routes while `/health` stays available. |
+| `ADENSA_API_KEY` | API key required by all operational FastAPI endpoints. Supplied through the environment; never hard-coded or committed. If unset, the API fails closed for protected routes while `/health` and `/ready` stay available. |
+| `ADENSA_CORS_ORIGINS` | Comma-separated list of browser origins allowed to call the API from a separately hosted frontend (CORS). Empty by default — no browser origin is trusted unless the deployment configures one; machine-to-machine callers are unaffected. |
 
 No secrets are stored in the repository.
 
 ## Current status and future direction
 
-**Implemented today:** everything described above — the full two-path exception lifecycle, control-tower visibility, three clients over one service boundary, the secured API, the external integration contract, and a 178-test CI-gated suite.
+**Implemented today:** everything described above — the full two-path exception lifecycle, control-tower visibility, three clients over one service boundary, the secured machine-to-machine API plus the versioned `/v1` application boundary with explicit response contracts, the external integration contract, and a CI-gated test suite.
 
-**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), production cloud deployment and hardening, event-driven integrations at scale, and AI-assisted decision support. These are directions for future development, not current capabilities.
+**Architecture progression:**
+
+```text
+Streamlit prototype
+        ↓
+service / domain architecture
+        ↓
+versioned FastAPI application boundary   ← current (ADR-011)
+        ↓
+Next.js operational frontend             ← future
+        ↓
+PostgreSQL + migrations                  ← future
+        ↓
+authentication / deployment hardening    ← future
+```
+
+**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the dedicated web frontend, PostgreSQL with schema migrations, production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities.
 
 ## Author
 

@@ -35,12 +35,13 @@ Rules kept by this boundary:
 import secrets
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from app import services
-from app.config import ADENSA_API_KEY
+from app.config import ADENSA_API_KEY, ADENSA_CORS_ORIGINS
 from app.database import get_connection
 from app.errors import (
     ActionNotFoundError,
@@ -50,6 +51,28 @@ from app.errors import (
 
 
 app = FastAPI(title="Adensa Digital API")
+
+
+# ==================================================
+# CORS (browser origins for the versioned application API)
+# ==================================================
+
+# Machine-to-machine callers (Power Automate, the CLI) are
+# unaffected by CORS — it only constrains browsers. Origins
+# are configured exclusively through the environment
+# (ADENSA_CORS_ORIGINS); with nothing configured no browser
+# origin is trusted, and the wildcard is deliberately never
+# used because the API carries operational data.
+
+if ADENSA_CORS_ORIGINS:
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ADENSA_CORS_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["X-API-Key"],
+    )
 
 
 # ==================================================
@@ -148,6 +171,328 @@ class RejectRequest(BaseModel):
     rejected_by: str = Field(min_length=1)
 
 
+# --------------------------------------------------
+# /v1 APPLICATION-BOUNDARY CONTRACTS (ADR-011)
+#
+# Explicit schemas for the operational reads the future
+# web client consumes. Every model mirrors the existing
+# service output — the API does not invent a new domain
+# model, it makes the current one visible and checkable.
+# --------------------------------------------------
+
+class ReadyResponse(BaseModel):
+    status: str
+    database: str
+
+
+class InboxRow(BaseModel):
+    """One open exception in the operational work queue."""
+
+    exception_id: str
+    shipment_id: str
+    exception_type: str
+    severity: str
+    estimated_impact: float
+    resolution_status: str
+    transport_mode: str
+    current_location: str
+    estimated_arrival: str | None
+    priority: str
+    required_delivery_date: str
+    feasible_option_count: int
+    executed_still_open: int
+
+
+class ControlTowerRecentlyResolved(BaseModel):
+    exception_id: str
+    exception_type: str
+    severity: str
+    resolution_status: str
+    resolved_at: str | None
+    resolution_path: str
+
+
+class ControlTowerFollowUpEntry(BaseModel):
+    exception_id: str
+    severity: str
+    exception_type: str
+    detected_at: str
+    action_id: str | None
+    executed_at: str | None
+    estimated_arrival: str | None
+    required_delivery_date: str
+    actionable: bool
+    reason: str
+
+
+class ControlTowerSummary(BaseModel):
+    """The control-tower projection: bounded-queue and full-population metrics with their distinct populations."""
+
+    open_exceptions: int
+    actionable_exceptions: int
+    monitoring_exceptions: int
+    pending_approvals: int
+    awaiting_execution: int
+    critical_exceptions: int
+    follow_up_required: int
+    follow_up_queue: list[ControlTowerFollowUpEntry]
+    recently_resolved: list[ControlTowerRecentlyResolved]
+
+
+class ManualInterventionRecord(BaseModel):
+    intervention_id: str
+    exception_id: str
+    intervention_type: str
+    external_party: str
+    resolution_summary: str
+    new_expected_delivery: str | None
+    outcome: str
+    notes: str | None
+    recorded_by: str
+    recorded_at: str
+
+
+class HistoryEntry(BaseModel):
+    """One reconstructed operational-history event (timestamp is None for steps the schema never dates)."""
+
+    timestamp: str | None
+    event: str
+    detail: str
+    actor: str
+    sequence: int
+
+
+class ExceptionContext(BaseModel):
+    """The investigation context for one exception (Situation & Impact surface)."""
+
+    exception_id: str
+    shipment_id: str
+    order_id: str
+    customer_id: str
+    customer_name: str
+    exception_type: str
+    severity: str
+    status: str
+    description: str
+    priority: str
+    origin: str
+    destination: str
+    route: str
+    transport_mode: str
+    carrier_id: str
+    shipment_status: str
+    planned_departure: str
+    estimated_arrival: str | None
+    required_delivery_date: str
+
+
+class InvestigationState(BaseModel):
+    """The persisted-evidence classification of an investigated exception."""
+
+    state: str
+    follow_up_required: bool
+    reason: str
+
+
+class ScoredOption(BaseModel):
+    """A scored recovery option exactly as the decision engine produced it."""
+
+    option_id: str
+    transport_mode: str
+    carrier_id: str
+    estimated_cost: float
+    estimated_transit_days: float
+    risk_score: float
+    cost_score: float
+    transit_score: float
+    risk_component: float
+    priority_score: float
+    cost_contribution: float
+    transit_contribution: float
+    risk_contribution: float
+    priority_contribution: float
+    decision_score: float
+    confidence: str | None = None
+    reason: str | None = None
+
+
+class FactorValue(BaseModel):
+    option_id: str
+    transport_mode: str
+    score: float
+    contribution: float
+
+
+class RationaleFactor(BaseModel):
+    factor: str
+    weight: float
+    values: list[FactorValue]
+
+
+class RationaleTradeOff(BaseModel):
+    option_id: str
+    transport_mode: str
+    stronger_factors: list[str]
+
+
+class RecommendationRationale(BaseModel):
+    """The decision rationale: policy weights, per-factor breakdown, trade-offs, confidence basis."""
+
+    weights: dict[str, float]
+    factor_breakdown: list[RationaleFactor]
+    trade_offs: list[RationaleTradeOff]
+    confidence_basis: str
+
+
+class EvaluatedOption(BaseModel):
+    """An evaluated recovery option when no feasible recommendation exists."""
+
+    option_id: str
+    transport_mode: str
+    carrier_id: str
+    estimated_cost: float
+    estimated_transit_days: float
+    risk_score: float
+    feasible: bool
+
+
+class RecoveryAssessment(BaseModel):
+    """The recovery assessment: recommendation + alternatives + rationale, or the evaluated options explaining why there is none."""
+
+    recommendation: ScoredOption | None
+    alternatives: list[ScoredOption]
+    evaluated_options: list[EvaluatedOption]
+    rationale: RecommendationRationale | None
+
+
+class SustainabilityEstimate(BaseModel):
+    """One option's estimated emissions, or an honest unavailable record."""
+
+    transport_mode: str
+    option_id: str | None
+    status: str
+    reason: str | None = None
+    shipment_weight_kg: float | None = None
+    shipment_weight_tonnes: float | None = None
+    distance_km: float | None = None
+    emissions_factor: float | None = None
+    estimated_co2e_kg: float | None = None
+    unit: str | None = None
+    methodology: str | None = None
+    data_quality_note: str | None = None
+
+
+class SustainabilityTradeOff(BaseModel):
+    option_id: str
+    transport_mode: str
+    estimated_co2e_kg: float
+    difference_kg: float
+    relative_to_recommendation: str
+
+
+class LowestEmissionOption(BaseModel):
+    option_id: str
+    transport_mode: str
+    estimated_co2e_kg: float
+
+
+class SustainabilityComparison(BaseModel):
+    """Informational emissions comparison; never part of the recommendation."""
+
+    status: str
+    unit: str
+    methodology: str
+    data_quality_note: str
+    estimates: list[SustainabilityEstimate]
+    trade_offs: list[SustainabilityTradeOff]
+    lowest_emission_option: LowestEmissionOption | None
+
+
+class SustainabilityUnavailable(BaseModel):
+    status: str
+    reason: str
+
+
+class LatestAction(BaseModel):
+    """The most recent recovery action and its workflow state."""
+
+    action_id: str
+    option_id: str | None
+    action_type: str
+    status: str
+    approved_by: str | None
+    approved_at: str | None
+    executed_at: str | None
+
+
+class WorkflowOutcome(BaseModel):
+    """A workflow mutation outcome (approve/reject/execute)."""
+
+    success: bool
+    message: str
+    action_id: str | None = None
+    shipment_id: str | None = None
+    previous_mode: str | None = None
+    new_mode: str | None = None
+    carrier_id: str | None = None
+    new_eta: str | None = None
+    recovery_event: str | None = None
+    required_delivery: str | None = None
+    exception_status: str | None = None
+
+
+class ManualResolutionRequest(BaseModel):
+    """A planner-recorded manual resolution; free-text fields are validated by the service."""
+
+    intervention_type: str
+    external_party: str = Field(min_length=1)
+    resolution_summary: str = Field(min_length=1)
+    recorded_by: str = Field(min_length=1)
+    outcome: str
+    new_expected_delivery: str | None = None
+    notes: str | None = None
+
+
+class ManualResolutionOutcome(WorkflowOutcome):
+    """The recorded manual-intervention outcome."""
+
+    exception_id: str
+    intervention_id: str
+    intervention_type: str
+    external_party: str
+    resolution_summary: str
+    new_expected_delivery: str | None
+    outcome: str
+    notes: str | None
+    recorded_by: str
+    recorded_at: str
+    exception_status: str
+
+
+class OperationalRefreshSummary(BaseModel):
+    """What one operational-refresh run created."""
+
+    new_exceptions: int
+    new_options: int
+    new_exception_ids: list[str]
+    actions_evaluated: int
+    new_actions: int
+    actions_without_recommendation: int
+    actions_skipped: int
+
+
+class SimulatedArrivalSummary(BaseModel):
+    """One controlled simulated shipment arrival."""
+
+    shipment_id: str
+    order_id: str
+    carrier_id: str
+    event_count: int
+    required_delivery: str
+    estimated_arrival: str
+    delay_days: int
+
+
 # ==================================================
 # ERROR MAPPING
 # ==================================================
@@ -204,6 +549,28 @@ def read_health():
     """Application liveness."""
 
     return HealthResponse(status="ok")
+
+
+@app.get(
+    "/ready",
+    response_model=ReadyResponse,
+)
+def read_ready(
+    connection=Depends(get_db),
+):
+    """
+    Readiness: the application can open and use the
+    configured database. Deliberately minimal — a SELECT
+    that touches no operational table and no internals in
+    the response.
+    """
+
+    connection.execute("SELECT 1").fetchone()
+
+    return ReadyResponse(
+        status="ready",
+        database="ok",
+    )
 
 
 @app.get(
@@ -274,7 +641,288 @@ def read_latest_action(
         exception_id,
     )
 
-    return dict(action) if action is not None else None
+    return action
+
+
+# ==================================================
+# VERSIONED APPLICATION BOUNDARY (/v1, ADR-011)
+#
+# The application-facing capability surface for the future
+# web client. Same service layer, same API-key guard, same
+# error mapping as the machine-to-machine endpoints above;
+# new paths so the existing integration contract is not
+# silently reshaped.
+# ==================================================
+
+def _not_found(detail):
+
+    raise HTTPException(status_code=404, detail=detail)
+
+
+@app.get(
+    "/v1/control-tower/summary",
+    response_model=ControlTowerSummary,
+)
+def read_control_tower_summary(
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """Control-tower projection: bounded-queue and full-population metrics plus the follow-up and resolved queues."""
+
+    return services.get_control_tower_summary(connection)
+
+
+@app.get(
+    "/v1/exceptions/inbox",
+    response_model=list[InboxRow],
+)
+def read_exception_inbox_v1(
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """The bounded operational work queue (actionable first, then newest detected)."""
+
+    return services.get_exception_inbox(connection)
+
+
+@app.get(
+    "/v1/exceptions/{exception_id}/context",
+    response_model=ExceptionContext,
+)
+def read_exception_context_v1(
+    exception_id: str,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """The investigation context for one exception (Situation & Impact)."""
+
+    context = services.get_exception_context(
+        connection,
+        exception_id,
+    )
+
+    if context is None:
+
+        _not_found(
+            f"Exception {exception_id} not found."
+        )
+
+    return context
+
+
+@app.get(
+    "/v1/exceptions/{exception_id}/state",
+    response_model=InvestigationState,
+)
+def read_investigation_state_v1(
+    exception_id: str,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """The persisted-evidence operational state of one exception."""
+
+    state = services.classify_investigation_state(
+        connection,
+        exception_id,
+    )
+
+    if state is None:
+
+        _not_found(
+            f"Exception {exception_id} not found."
+        )
+
+    return state
+
+
+@app.get(
+    "/v1/exceptions/{exception_id}/history",
+    response_model=list[HistoryEntry],
+)
+def read_exception_history_v1(
+    exception_id: str,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """The reconstructed chronological operational history of one exception."""
+
+    history = services.get_exception_history(
+        connection,
+        exception_id,
+    )
+
+    if history is None:
+
+        _not_found(
+            f"Exception {exception_id} not found."
+        )
+
+    return history
+
+
+@app.get(
+    "/v1/exceptions/{exception_id}/assessment",
+    response_model=RecoveryAssessment,
+)
+def read_recovery_assessment_v1(
+    exception_id: str,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """The deterministic recovery assessment: recommendation, alternatives, rationale — or the evaluated options explaining why none exists."""
+
+    assessment = services.get_recovery_assessment(
+        connection,
+        exception_id,
+    )
+
+    if assessment is None:
+
+        _not_found(
+            f"Exception {exception_id} not found."
+        )
+
+    return assessment
+
+
+@app.get(
+    "/v1/exceptions/{exception_id}/sustainability",
+    response_model=(
+        SustainabilityComparison | SustainabilityUnavailable
+    ),
+)
+def read_sustainability_v1(
+    exception_id: str,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """The informational emissions comparison, or the structured unavailable state when there is nothing to compare."""
+
+    # Distinguish a missing exception (404) from an existing
+    # exception with no deterministic recommendation to
+    # compare (the structured unavailable state).
+
+    exception = services.get_exception_context(
+        connection,
+        exception_id,
+    )
+
+    if exception is None:
+
+        _not_found(
+            f"Exception {exception_id} not found."
+        )
+
+    comparison = services.get_sustainability_comparison(
+        connection,
+        exception_id,
+    )
+
+    if comparison is None:
+
+        return SustainabilityUnavailable(
+            status="unavailable",
+            reason=(
+                "No deterministic recommendation exists for "
+                "this exception, so there is nothing to "
+                "compare."
+            ),
+        )
+
+    return comparison
+
+
+@app.get(
+    "/v1/exceptions/{exception_id}/interventions",
+    response_model=list[ManualInterventionRecord],
+)
+def read_manual_interventions_v1(
+    exception_id: str,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """The recorded manual interventions for one exception (newest first)."""
+
+    exception = services.get_exception_context(
+        connection,
+        exception_id,
+    )
+
+    if exception is None:
+
+        _not_found(
+            f"Exception {exception_id} not found."
+        )
+
+    return services.get_manual_interventions(
+        connection,
+        exception_id,
+    )
+
+
+@app.post(
+    "/v1/exceptions/{exception_id}/manual-resolution",
+    response_model=ManualResolutionOutcome,
+)
+def record_manual_resolution_v1(
+    exception_id: str,
+    request: ManualResolutionRequest,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """Record a planner-performed manual resolution for an exception with no feasible system recovery."""
+
+    outcome = services.record_manual_resolution(
+        connection,
+        exception_id,
+        request.intervention_type,
+        request.external_party,
+        request.resolution_summary,
+        request.recorded_by,
+        request.outcome,
+        new_expected_delivery=request.new_expected_delivery,
+        notes=request.notes,
+    )
+
+    return outcome
+
+
+@app.post(
+    "/v1/operations/refresh",
+    response_model=OperationalRefreshSummary,
+)
+def run_operational_refresh_v1(
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """Run the operational pipeline: detect exceptions, generate options, evaluate actions."""
+
+    return services.run_operational_refresh(connection)
+
+
+@app.post(
+    "/v1/operations/simulate-arrival",
+    response_model=SimulatedArrivalSummary,
+)
+def run_simulated_arrival_v1(
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """Create one controlled simulated shipment arrival (no exceptions; the refresh detects them)."""
+
+    arrival = services.run_data_arrival_simulation(connection)
+
+    if arrival is None:
+
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No operational data to derive a simulated "
+                "arrival from."
+            ),
+        )
+
+    return arrival
 
 
 # ==================================================
