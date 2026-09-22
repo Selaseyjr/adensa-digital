@@ -325,18 +325,23 @@ def test_actionable_exception_renders_recommendation():
             if "Option" in frame.value.columns
         ][0]
 
-        # The engine's per-option factor scores are shown
-        # alongside the raw option data, so the planner can
-        # see WHY the recommendation wins — without the UI
-        # recomputing anything.
-        for factor_column in (
-            "Cost fit",
-            "Transit fit",
-            "Risk fit",
-            "Priority fit",
+        # W6: the comparison table carries the operational
+        # properties of each option; the per-option factor
+        # scores and their weighted contributions are shown
+        # once, with the policy weights, in the rationale
+        # factor table asserted below — the planner can
+        # still see WHY the recommendation wins, without
+        # the UI recomputing anything.
+        for column in (
+            "Option",
+            "Mode",
+            "Carrier",
+            "Cost (€)",
+            "Transit (days)",
+            "Risk",
             "Score",
         ):
-            assert factor_column in comparison_table.columns
+            assert column in comparison_table.columns
 
         verdicts = comparison_table["Option"].tolist()
         assert verdicts[0] == "Recommended"
@@ -1358,6 +1363,72 @@ def test_investigation_state_banner_classifies_every_exception():
             "No system recovery available" in (value or "")
             for value in infos
         ), "the no-recovery state must be surfaced for the manual path"
+
+    finally:
+        tmp.cleanup()
+
+
+# ===== W6: Situation & Impact grouping =====
+
+
+def test_situation_and_impact_groups_the_exception_story():
+    """
+    W6: the exception's detail block is presented as one
+    planner-facing situation section in the reading order
+    what happened -> where/when -> delivery impact, and
+    the generic 'Exception Details' heading is gone.
+    """
+
+    tmp, db_path = _build_database(with_pipeline=True)
+
+    try:
+        app_test = _open_ui(db_path)
+
+        _select_exception(app_test, "EXC-900002")
+
+        subheaders = _text_values(app_test.subheader)
+
+        assert "Situation & Impact" in subheaders
+        assert "Exception Details" not in subheaders
+
+        # Every operational field remains surfaced.
+        writes = _text_values(app_test.markdown)
+
+        for field in (
+            "Exception:",
+            "Exception Type:",
+            "Severity:",
+            "Shipment:",
+            "Transport Mode:",
+            "Current Location:",
+            "Priority:",
+            "Estimated Arrival:",
+            "Required Delivery:",
+            "Estimated Impact:",
+        ):
+            assert any(
+                f"**{field}**" in (w or "")
+                for w in writes
+            ), f"{field} must remain visible"
+
+        # The fields appear in the planner's reading
+        # order: what happened, then where/when, then
+        # the delivery impact.
+        positions = [
+            next(
+                i
+                for i, w in enumerate(writes)
+                if f"**{field}**" in (w or "")
+            )
+            for field in (
+                "Exception:",
+                "Shipment:",
+                "Estimated Arrival:",
+                "Estimated Impact:",
+            )
+        ]
+
+        assert positions == sorted(positions)
 
     finally:
         tmp.cleanup()

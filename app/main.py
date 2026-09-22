@@ -720,25 +720,27 @@ def render_exception_context(connection):
 
 
 def render_exception_details(connection):
-    """Operational detail columns for the selected exception."""
+    """
+    Situation and operational impact of the selected
+    exception, grouped in the planner's reading order:
+    what happened, then where/when, then the delivery
+    impact.
+    """
 
     selected_exception_id = st.session_state.selected_exception_id
     selected_exception = _selected_inbox_exception(connection)
 
-    st.subheader("Exception Details")
+    st.subheader("Situation & Impact")
 
     detail_col1, detail_col2, detail_col3 = st.columns(3)
 
     with detail_col1:
 
+        # What happened.
+
         st.write(
             f"**Exception:** "
             f"{selected_exception['exception_id']}"
-        )
-
-        st.write(
-            f"**Shipment:** "
-            f"{selected_exception['shipment_id']}"
         )
 
         st.write(
@@ -753,9 +755,11 @@ def render_exception_details(connection):
 
     with detail_col2:
 
+        # Where and how it moves.
+
         st.write(
-            f"**Priority:** "
-            f"{selected_exception['priority']}"
+            f"**Shipment:** "
+            f"{selected_exception['shipment_id']}"
         )
 
         st.write(
@@ -768,7 +772,15 @@ def render_exception_details(connection):
             f"{selected_exception['current_location']}"
         )
 
+        st.write(
+            f"**Priority:** "
+            f"{selected_exception['priority']}"
+        )
+
     with detail_col3:
+
+        # The operational impact and the delivery
+        # commitment it threatens.
 
         st.write(
             f"**Estimated Arrival:** "
@@ -1154,7 +1166,11 @@ def render_decision_support(connection):
 
             # One comparable row per feasible option: the
             # recommendation first, then the alternatives
-            # in the decision engine's own ranking. All
+            # in the decision engine's own ranking. The
+            # operational properties are shown here; the
+            # per-factor scores and their weighted
+            # contributions are shown once, with weights,
+            # in the Recommendation Rationale below. All
             # values come from the existing scoring
             # contract; nothing is recalculated here.
             comparison_options = [
@@ -1190,18 +1206,6 @@ def render_decision_support(connection):
                         "Risk": (
                             f"{option['risk_score']:.0f}"
                         ),
-                        "Cost fit": (
-                            f"{option['cost_score']:.0f}"
-                        ),
-                        "Transit fit": (
-                            f"{option['transit_score']:.0f}"
-                        ),
-                        "Risk fit": (
-                            f"{option['risk_component']:.0f}"
-                        ),
-                        "Priority fit": (
-                            f"{option['priority_score']:.0f}"
-                        ),
                         "Score": (
                             f"{option['decision_score']:.2f}"
                         ),
@@ -1215,10 +1219,11 @@ def render_decision_support(connection):
             )
 
             st.caption(
-                "Factor scores (0–100: higher is better) come "
-                "from the decision engine's benchmarks; the "
-                "decision score is their weighted combination. "
-                "The configured policy weights are shown below."
+                "The decision score is the weighted "
+                "combination of the factor scores (0–100: "
+                "higher is better). Each option's factor "
+                "scores and weighted contributions are "
+                "broken down below."
             )
 
         # --------------------------------------------------
