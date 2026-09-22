@@ -192,7 +192,11 @@ class InboxRow(BaseModel):
     shipment_id: str
     exception_type: str
     severity: str
-    estimated_impact: float
+    # The detection engine writes a descriptive operational
+    # sentence ("Estimated delivery delay of N day(s). Customer
+    # delivery commitment at risk.") — the model mirrors that
+    # actual domain output.
+    estimated_impact: str
     resolution_status: str
     transport_mode: str
     current_location: str

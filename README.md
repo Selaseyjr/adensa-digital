@@ -33,7 +33,7 @@ Verified functionality in the current repository:
 - **Manual resolution** — when no system-generated option is feasible, a planner can record an externally negotiated intervention (method, external party, agreed resolution, optional revised delivery, outcome) as a distinct, auditable resolution path.
 - **Operational history** — a chronological, evidence-based timeline per exception: detection, option evaluation, decisions (with actor), executions, interventions and the current outcome.
 - **Control tower** — an at-a-glance operational summary: open exceptions split into actionable vs monitoring, pending decisions, actions awaiting execution, critical exceptions, and recently resolved outcomes with their resolution path.
-- **Three clients, one boundary** — Streamlit UI, FastAPI API and CLI all consume the same application service layer; no client contains SQL or business rules.
+- **Clients over one boundary** — the Next.js operational client, the Streamlit reference UI, the FastAPI API and the CLI all consume the same application service layer; no client contains SQL or business rules.
 - **Controlled data-arrival simulation** — a deterministic development mechanism that creates a new shipment arrival so the full pipeline (detect → recommend → decide → execute) can be demonstrated on demand.
 - **Automated testing** — 178 tests covering repositories, services, engines, workflow lifecycles, the API contract, the Streamlit UI (Streamlit AppTest) and the external integration contract, all on isolated temporary databases.
 - **CI** — GitHub Actions runs compile checks and the full test suite on every push.
@@ -44,8 +44,9 @@ Adensa is a strictly layered application. The service layer is the application b
 
 ```mermaid
 flowchart TD
-    UI["Streamlit UI<br/>app/main.py"] --> SVC
-    API["FastAPI API<br/>app/api.py"] --> SVC
+    WEB["Next.js operational client<br/>web/"] -->|"HTTPS / REST"| API
+    UI["Streamlit UI (reference client)<br/>app/main.py"] --> SVC
+    API["FastAPI /v1 boundary<br/>app/api.py"] --> SVC
     CLI["CLI<br/>app/cli.py"] --> SVC
     SVC["Application services<br/>app/services.py"] --> ENG["Business engines<br/>detect / options / decision /<br/>workflow / execution / simulation"]
     SVC --> REPO["Repositories<br/>app/repositories/*"]
@@ -55,7 +56,7 @@ flowchart TD
 
 | Layer | Responsibility |
 |---|---|
-| Presentation (Streamlit / FastAPI / CLI) | Rendering, request handling, input validation. No SQL, no business rules. |
+| Presentation (Next.js client / Streamlit / FastAPI / CLI) | Rendering, request handling, input validation. No SQL, no business rules. The Next.js client consumes only the versioned `/v1` API; Streamlit remains temporarily available as the reference client during the migration. |
 | Application services | Orchestration, application-level projections (control tower, operational history), transaction boundaries for service-owned operations, typed error translation. |
 | Business engines | Domain rules: detection, option generation, decision scoring, workflow transitions, execution, simulation. |
 | Repositories | All SQL and data access. Read/write functions per aggregate; no business logic. |
@@ -126,6 +127,14 @@ The FastAPI boundary (`app/api.py`) exposes the service layer over HTTP. All ope
 
 Every operational read under `/v1` returns an explicit Pydantic schema mirroring the service output, so the whole workspace capability set is documented in the generated OpenAPI. Service results are ordinary JSON-compatible structures — no persistence-layer types cross the boundary. Domain errors map to HTTP semantics: missing resources to 404, invalid workflow transitions and domain-rule violations to 409, with the engine's message preserved. See `docs/api-authentication.md` for the authentication contract.
 
+The Next.js client (`web/`) consumes the `/v1` boundary only. Its TypeScript contract (`web/lib/types/api.ts`) mirrors the Pydantic response models; the API remains the single source of truth.
+
+## Operational web client
+
+`web/` contains the production-style Next.js operational client. It renders the Control Tower and the Exception Inbox work queue directly from the `/v1` API, with deliberate loading, API-unavailable, empty and contract-violation states. All data is fetched server-side; components never call `fetch` or build API URLs, and no business rules (metric populations, inbox ordering, workflow semantics) are recomputed in the client. See `web/README.md` for the architecture decisions and `web/.env.example` for configuration.
+
+Streamlit (`app/main.py`) remains temporarily available as the existing reference client during the migration and is unaffected by the new client.
+
 ## CLI
 
 The CLI (`app/cli.py`) provides terminal access to the same services:
@@ -145,10 +154,11 @@ The test suite (178 tests) runs entirely on isolated temporary databases built w
 - **Engine and lifecycle tests** — detection rules, decision scoring, workflow transitions and idempotency, execution branches (resolved vs still open), bootstrap idempotence.
 - **API contract tests** — endpoint behavior, error mapping, and the `X-API-Key` security boundary (missing/invalid/unconfigured key, fail-closed behavior, no mutation on rejected requests).
 - **Streamlit AppTest tests** — the real UI executed headlessly: control-tower render, exception investigation, approval → execution, still-open honesty, rejection, manual resolution paths, resolved visibility, history, and the quiet-database state.
+- **Frontend tests** — the Next.js client under `web/` (vitest + msw): application shell, Control Tower and inbox rendering against the `/v1` contract, all four API-result states, exception selection, and a guard that no business-rule computation entered the client.
 - **Integration contract tests** — the exact request sequence an external orchestrator performs against the API (poll → select → review → decide → execute → read back → outcome), including timeout/re-read and duplicate-mutation protection.
 - **Database validation** — schema, foreign keys, referential integrity and shipment/event consistency validators.
 
-CI (GitHub Actions, Linux, Python 3.14) installs both dependency sets, byte-compiles the codebase and runs the full suite on every push.
+CI (GitHub Actions, Linux, Python 3.14) installs both dependency sets, byte-compiles the codebase and runs the full suite on every push. A second CI job runs the frontend pipeline (typecheck → lint → unit tests → production build) with Node 24; a failing frontend build fails CI.
 
 ## Power Automate integration
 
@@ -190,6 +200,11 @@ app/
 docs/
   api-authentication.md     # API-key authentication contract
   power-automate-integration.md  # External orchestration integration contract
+web/                        # Next.js operational client (production-style frontend)
+  app/                      # Routes: Control Tower, Exceptions, Operations, Administration
+  components/               # Presentation components (Server Components)
+  lib/api/                  # The single network boundary (no fetch in components)
+  lib/types/                # TypeScript mirror of the /v1 API contract
 tests/                      # 178 automated tests (pytest + Streamlit AppTest)
 ```
 
@@ -202,8 +217,11 @@ Requirements: Python 3.14.
 pip install -r requirements.txt
 pip install -r requirements-api.txt   # only needed to run the API
 
-# 2. Run the Streamlit application
+# 2. Run the Streamlit application (reference client)
 streamlit run streamlit_app.py
+
+# 3. Run the Next.js operational client (see web/README.md)
+cd web && npm install && npm run dev   # requires the API running locally
 ```
 
 On first run the application initializes its SQLite database automatically: schema, synthetic master data, the operational dataset (orders, shipments, events), then exception detection, recovery-option generation and workflow actions. Subsequent starts reuse the existing database without regenerating it.
@@ -228,12 +246,13 @@ python -m app.generate_data
 |---|---|
 | `ADENSA_API_KEY` | API key required by all operational FastAPI endpoints. Supplied through the environment; never hard-coded or committed. If unset, the API fails closed for protected routes while `/health` and `/ready` stay available. |
 | `ADENSA_CORS_ORIGINS` | Comma-separated list of browser origins allowed to call the API from a separately hosted frontend (CORS). Empty by default — no browser origin is trusted unless the deployment configures one; machine-to-machine callers are unaffected. |
+| `API_BASE_URL` (web/) | Server-side base URL the Next.js client uses to reach the FastAPI `/v1` boundary. Deliberately **not** a `NEXT_PUBLIC_` variable: the API origin and the machine-to-machine API key never ship to the browser. See `web/.env.example`. |
 
 No secrets are stored in the repository.
 
 ## Current status and future direction
 
-**Implemented today:** everything described above — the full two-path exception lifecycle, control-tower visibility, three clients over one service boundary, the secured machine-to-machine API plus the versioned `/v1` application boundary with explicit response contracts, the external integration contract, and a CI-gated test suite.
+**Implemented today:** everything described above — the full two-path exception lifecycle, control-tower visibility, clients over one service boundary, the secured machine-to-machine API plus the versioned `/v1` application boundary with explicit response contracts, the initial Next.js operational client (Control Tower + Exception Inbox), the external integration contract, and a CI-gated Python and frontend test suite.
 
 **Architecture progression:**
 
@@ -242,16 +261,16 @@ Streamlit prototype
         ↓
 service / domain architecture
         ↓
-versioned FastAPI application boundary   ← current (ADR-011)
+versioned FastAPI application boundary   ← done (ADR-011)
         ↓
-Next.js operational frontend             ← future
+Next.js operational client               ← current (foundation)
         ↓
 PostgreSQL + migrations                  ← future
         ↓
 authentication / deployment hardening    ← future
 ```
 
-**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the dedicated web frontend, PostgreSQL with schema migrations, production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities.
+**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the remaining Next.js surfaces (investigation workspace, decision support, operational history, workflow actions, administration), PostgreSQL with schema migrations, production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities.
 
 ## Author
 

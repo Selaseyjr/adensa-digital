@@ -180,7 +180,8 @@ def seed_minimal_supply_chain(connection):
         VALUES (
             'EXC-900001', 'SHP-900001', 'Shipment Delay', 'Low',
             '2026-09-10 12:00:00',
-            'Fixture exception: monitored, no recovery needed', 500,
+            'Fixture exception: monitored, no recovery needed',
+            'Estimated delivery delay of 2 day(s). Customer delivery commitment at risk.',
             'Open', NULL
         )
         """
@@ -197,7 +198,8 @@ def seed_minimal_supply_chain(connection):
         VALUES (
             'EXC-900002', 'SHP-900002', 'Shipment Delay', 'High',
             '2026-09-10 12:00:00',
-            'Fixture exception: five days late', 5000,
+            'Fixture exception: five days late',
+            'Estimated delivery delay of 5 day(s). Customer delivery commitment at risk.',
             'Open', NULL
         )
         """

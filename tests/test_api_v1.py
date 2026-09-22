@@ -39,6 +39,36 @@ def _generate_options_and_action(connection):
 # READINESS
 # ==================================================
 
+def test_v1_inbox_estimated_impact_matches_domain_output(api_client):
+    """
+    The inbox contract must describe the data the detection
+    engine actually writes: `estimated_impact` is the domain's
+    descriptive operational sentence, not a numeric amount.
+
+    This pins the live-data regression caught during P3: the
+    models originally declared a float and every real bootstrap
+    dataset request failed response validation (HTTP 500) while
+    float-seeded fixtures passed.
+    """
+
+    client, connection = api_client
+
+    response = client.get("/v1/exceptions/inbox")
+
+    assert response.status_code == 200
+
+    rows = response.json()
+    assert rows, "expected the seeded exception in the inbox"
+
+    for row in rows:
+        assert isinstance(row["estimated_impact"], str)
+
+    # The production detection engine's exact wording.
+    assert rows[0]["estimated_impact"].startswith(
+        "Estimated delivery delay of "
+    )
+
+
 def test_ready_verifies_database_reachability(api_client):
     """
     /ready is public and confirms the application can use
