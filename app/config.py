@@ -1,5 +1,7 @@
 import os
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 
 # ==================================================
@@ -38,6 +40,130 @@ ADENSA_CORS_ORIGINS = [
     for origin in _cors_origins.split(",")
     if origin.strip()
 ]
+
+
+# ==================================================
+# DATABASE CONFIGURATION (P5.2 PERSISTENCE SEAM)
+# ==================================================
+#
+# Backend selection is environment-driven. DATABASE_URL
+# absent -> the existing default SQLite development database
+# at DATABASE_PATH below (unchanged behavior). DATABASE_URL
+# may name either backend:
+#
+#     sqlite:///C:/path/to/adensa.db     (Windows absolute path)
+#     sqlite:////abs/posix/path          (POSIX absolute path)
+#     postgresql://user:secret@host:5432/adensa
+#
+# A postgresql:// URL is *represented* here but not yet
+# connectable: the connection factory fails fast with a clear
+# error until the PostgreSQL backend checkpoint lands, so no
+# half-supported dialect can silently corrupt operational
+# data. No credentials are ever hard-coded, logged or exposed
+# to the frontend; safe_description() redacts the password
+# for any operational logging.
+
+
+def _redact_url(url: str) -> str:
+    """Mask the password of a database URL for safe display."""
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "postgresql (unparseable URL)"
+
+    netloc = parts.netloc
+
+    if "@" in netloc:
+        userinfo, _, hostport = netloc.rpartition("@")
+        user = userinfo.split(":", 1)[0]
+        netloc = f"{user}:***@{hostport}"
+
+    return urlunsplit(
+        (parts.scheme, netloc, parts.path, "", "")
+    )
+
+
+@dataclass(frozen=True)
+class DatabaseConfig:
+    """The configured database backend, resolved at call time."""
+
+    backend: str  # "sqlite" | "postgresql"
+    # None for PostgreSQL; None also means "the default SQLite
+    # development path" for the sqlite backend.
+    sqlite_path: Path | None = None
+    url: str | None = None
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.backend == "sqlite"
+
+    @property
+    def is_postgresql(self) -> bool:
+        return self.backend == "postgresql"
+
+    def safe_description(self) -> str:
+        """
+        Human-readable description with credentials redacted —
+        the only form of this configuration that may appear in
+        logs or diagnostics.
+        """
+
+        if self.is_sqlite:
+            return f"sqlite ({self.sqlite_path or 'default development path'})"
+
+        return f"postgresql ({_redact_url(self.url or '')})"
+
+
+def _parse_sqlite_url(url: str) -> Path:
+    """Extract the file path from a sqlite:/// URL."""
+
+    # The authority component is always empty for sqlite URLs,
+    # so the path starts right after scheme + "//". One leading
+    # slash separates the empty authority from the path:
+    # strip exactly one; a further leading slash belongs to the
+    # path itself (sqlite:////abs/posix/path).
+
+    path = url[len("sqlite://"):]
+
+    if path.startswith("/") and not path.startswith("//"):
+        path = path[1:]
+
+    return Path(path)
+
+
+def get_database_config() -> DatabaseConfig:
+    """
+    Resolve the configured database backend.
+
+    Read at call time (not import time) so tests and entry
+    points can select a backend per process via the
+    environment without re-importing the module.
+    """
+
+    url = os.environ.get("DATABASE_URL", "").strip()
+
+    if not url:
+        return DatabaseConfig(backend="sqlite")
+
+    scheme = url.split(":", 1)[0].lower()
+
+    if scheme in ("postgres", "postgresql"):
+        return DatabaseConfig(
+            backend="postgresql",
+            url=url,
+        )
+
+    if scheme == "sqlite":
+        return DatabaseConfig(
+            backend="sqlite",
+            sqlite_path=_parse_sqlite_url(url),
+        )
+
+    raise ValueError(
+        "DATABASE_URL uses an unsupported scheme: only "
+        "sqlite:/// and postgresql:// are recognized."
+    )
 
 
 # ==================================================

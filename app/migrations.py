@@ -23,6 +23,15 @@ migration abstraction itself is plain SQL and sequential version
 numbers, so the same history can drive PostgreSQL (where the
 version stamp becomes a `schema_migrations` row) without a second
 competing schema-definition system.
+
+Version-state portability (P5.2): the runner speaks to the
+backend's version store through two functions —
+`_read_stored_version` and `_write_stored_version` — resolved
+per connection by `_version_backend`. The SQLite
+implementation is the historical `PRAGMA user_version`; a
+PostgreSQL `schema_migrations` table implementation slots in
+at that seam without touching the runner, the history, or the
+guarantees.
 """
 
 from __future__ import annotations
@@ -289,14 +298,54 @@ _SCHEMA_VERSION_COMMAND = "PRAGMA user_version = {version}"
 
 
 # ==================================================
+# VERSION-STATE BACKEND SEAM (P5.2)
+# ==================================================
+#
+# The runner's only backend-specific concern is where the
+# applied version lives. SQLite: PRAGMA user_version.
+# PostgreSQL (future): a schema_migrations table. Selecting
+# by connection dialect keeps one runner and one history for
+# both backends.
+
+
+def _sqlite_version_backend(connection):
+
+    def read_version():
+        row = connection.execute("PRAGMA user_version").fetchone()
+        return int(row[0])
+
+    def write_version(version):
+        connection.execute(
+            _SCHEMA_VERSION_COMMAND.format(version=version)
+        )
+
+    return read_version, write_version
+
+
+def _version_backend(connection):
+    """Resolve the version store for a connection's dialect."""
+
+    module_name = type(connection).__module__ or ""
+
+    if "sqlite3" in module_name or type(connection).__name__ == "Connection" and module_name.endswith("sqlite3"):
+        return _sqlite_version_backend(connection)
+
+    # Unknown/undialectable connections (test doubles): the
+    # runner has only ever been exercised against SQLite, and
+    # the PostgreSQL seam is not implemented yet, so the
+    # historical default is the only honest choice.
+    return _sqlite_version_backend(connection)
+
+
+# ==================================================
 # VERSION INSPECTION
 # ==================================================
 
 def get_schema_version(connection) -> int:
     """Return the schema version recorded for this database."""
 
-    row = connection.execute("PRAGMA user_version").fetchone()
-    return int(row[0])
+    read_version, _ = _version_backend(connection)
+    return read_version()
 
 
 # ==================================================
@@ -317,6 +366,8 @@ def apply_pending_migrations(connection) -> int:
     current = get_schema_version(connection)
     applied = 0
 
+    _, write_version = _version_backend(connection)
+
     for version, name, statements in MIGRATIONS:
         if version <= current:
             continue
@@ -325,9 +376,7 @@ def apply_pending_migrations(connection) -> int:
             connection.execute("BEGIN")
             for statement in statements:
                 connection.execute(statement)
-            connection.execute(
-                _SCHEMA_VERSION_COMMAND.format(version=version)
-            )
+            write_version(version)
             connection.commit()
         except Exception:
             connection.rollback()
