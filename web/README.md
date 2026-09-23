@@ -92,7 +92,14 @@ API_KEY=<the value the API server receives via ADENSA_API_KEY>
 
 Both variables are read **server-side only**. There is deliberately no
 `NEXT_PUBLIC_` variable: the API origin and the machine credential must
-never ship to the browser. The Next server presents the same
+never ship to the browser. The `http://127.0.0.1:8000` fallback is for
+local development only — **production deployments must configure
+`API_BASE_URL` explicitly**; starting a production build without it
+logs a loud warning at startup (and is a configuration error, not a
+supported mode). Deployment guidance for the whole system —
+environment separation, migration sequence, health/readiness probes,
+production invocation — lives in [`docs/deployment.md`](../docs/deployment.md).
+The Next server presents the same
 `X-API-Key` a trusted server-side integration (e.g. Power Automate)
 presents — this is machine-to-machine configuration, not user
 authentication, which remains a future checkpoint. Without `API_KEY`,

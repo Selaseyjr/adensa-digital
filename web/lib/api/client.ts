@@ -37,6 +37,18 @@ import type {
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
 
+// The localhost fallback exists for local development only. A
+// production deployment must configure API_BASE_URL explicitly;
+// depending on the fallback there is deliberately loud (warned
+// once at module load), never silent.
+if (process.env.NODE_ENV === "production" && !process.env.API_BASE_URL) {
+  console.warn(
+    "[adensa] API_BASE_URL is not configured; the API client is " +
+      "falling back to http://127.0.0.1:8000. Production deployments " +
+      "must set API_BASE_URL to the FastAPI /v1 origin.",
+  );
+}
+
 /**
  * Server-side machine credential for the /v1 boundary.
  *
