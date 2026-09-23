@@ -30,9 +30,15 @@ import type {
   InboxRow,
   InvestigationState,
   ManualInterventionRecord,
+  ManualResolutionOutcome,
+  ManualResolutionRequest,
+  ApproveRequest,
+  RejectRequest,
+  RecoveryActionRef,
   RecoveryAssessment,
   SustainabilityComparison,
   SustainabilityUnavailable,
+  WorkflowOutcome,
 } from "@/lib/types/api";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -69,6 +75,16 @@ const REQUEST_HEADERS: HeadersInit = {
   ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
 };
 
+// The workflow mutations intentionally span the versioned
+// boundary and the legacy machine-to-machine compatibility
+// paths (ADR-011): approve/reject/execute predate /v1 and are
+// consumed exactly as they exist — not re-versioned in P7.
+const APPROVE_PATH = "/exceptions/{id}/approve";
+const REJECT_PATH = "/exceptions/{id}/reject";
+const EXECUTE_PATH = "/recovery-actions/{id}/execute";
+const MANUAL_RESOLUTION_PATH = "/v1/exceptions/{id}/manual-resolution";
+
+const EXCEPTION_LATEST_ACTION_PATH = "/exceptions/{id}/actions/latest";
 const CONTROL_TOWER_SUMMARY_PATH = "/v1/control-tower/summary";
 const EXCEPTION_INBOX_PATH = "/v1/exceptions/inbox";
 const EXCEPTION_CONTEXT_PATH = "/v1/exceptions/{id}/context";
@@ -162,6 +178,184 @@ function validateArray<T>(body: unknown): T[] | null {
   }
 
   return body as T[];
+}
+
+/**
+ * Mutation result states: the same honest-failure philosophy
+ * as the read results, plus the workflow-specific states —
+ * a backend workflow guard (HTTP 409, the engine's own
+ * message), validation (HTTP 422), the addressed resource
+ * not existing (HTTP 404) and the caller lacking the machine
+ * credential (HTTP 401/403).
+ */
+export type MutationResult<T> =
+  | { kind: "success"; data: T }
+  | { kind: "guard"; message: string }
+  | { kind: "validation"; message: string }
+  | { kind: "notFound"; message: string }
+  | { kind: "unauthenticated"; message: string }
+  | { kind: "unavailable"; message: string }
+  | { kind: "unexpected"; message: string };
+
+/** FastAPI 422 bodies carry a `detail` array of field errors, not a string. */
+function isValidationErrorBody(body: unknown): boolean {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    Array.isArray((body as { detail?: unknown }).detail)
+  );
+}
+
+/**
+ * Perform one POST against the API boundary and normalize
+ * every failure mode into the mutation result states above.
+ * Same transport discipline as the reads: server-side
+ * credential headers, no caching, no browser exposure.
+ */
+async function postToApi<T>(
+  path: string,
+  payload: Record<string, unknown> | null,
+  validate: (body: unknown) => T | null,
+): Promise<MutationResult<T>> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      // Mutations are never cacheable.
+      cache: "no-store",
+      method: "POST",
+      headers: {
+        ...REQUEST_HEADERS,
+        ...(payload === null
+          ? {}
+          : { "Content-Type": "application/json" }),
+      },
+      ...(payload === null ? {} : { body: JSON.stringify(payload) }),
+    });
+  } catch {
+    return {
+      kind: "unavailable",
+      message:
+        "The Adensa API is unreachable. Confirm the API server is running and try again.",
+    };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return {
+      kind: "unauthenticated",
+      message:
+        "The operation was rejected — the server is not configured with a valid API credential.",
+    };
+  }
+
+  if (response.status === 404) {
+    return {
+      kind: "notFound",
+      message:
+        "The addressed exception or recovery action no longer exists — refresh the workspace.",
+    };
+  }
+
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+
+    return {
+      kind: "guard",
+      message:
+        body && typeof body.detail === "string"
+          ? body.detail
+          : "The workflow rejected this operation in its current state.",
+    };
+  }
+
+  if (response.status === 422) {
+    const body = (await response.json().catch(() => null)) as unknown;
+
+    return {
+      kind: "validation",
+      message: isValidationErrorBody(body)
+        ? "One or more fields were rejected — check the highlighted values."
+        : "The operation payload was rejected as invalid.",
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      kind: "unavailable",
+      message: `The Adensa API reported an error (HTTP ${response.status}).`,
+    };
+  }
+
+  const body = (await response.json().catch(() => null)) as unknown;
+
+  if (body === null) {
+    return {
+      kind: "unexpected",
+      message: "The Adensa API returned a malformed response.",
+    };
+  }
+
+  const data = validate(body);
+
+  if (data === null) {
+    return {
+      kind: "unexpected",
+      message: "The Adensa API returned an unexpected response shape.",
+    };
+  }
+
+  return { kind: "success", data };
+}
+
+/**
+ * Structural validator for a workflow-mutation outcome: the
+ * fields every approve/reject/execute/manual-resolution
+ * response carries.
+ */
+export function isWorkflowOutcome(body: unknown): WorkflowOutcome | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  return typeof candidate.success === "boolean" &&
+    typeof candidate.message === "string" &&
+    typeof candidate.action_id === "string"
+    ? (body as WorkflowOutcome)
+    : null;
+}
+
+function isManualResolutionOutcome(
+  body: unknown,
+): ManualResolutionOutcome | null {
+  const outcome = isWorkflowOutcome(body);
+
+  if (outcome === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  return typeof candidate.intervention_id === "string" &&
+    typeof candidate.exception_id === "string" &&
+    typeof candidate.exception_status === "string" &&
+    typeof candidate.recorded_at === "string"
+    ? (body as ManualResolutionOutcome)
+    : null;
+}
+
+function isLatestAction(body: unknown): RecoveryActionRef | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  return typeof candidate.action_id === "string" &&
+    typeof candidate.status === "string"
+    ? (body as RecoveryActionRef)
+    : null;
 }
 
 export function isControlTowerSummary(body: unknown): ControlTowerSummary | null {
@@ -561,6 +755,109 @@ export function getManualInterventions(
 
       return rows;
     },
+  );
+}
+
+/**
+ * The endpoint returns a literal JSON `null` body when the
+ * exception has no action; this sentinel lets the shared
+ * GET helper carry that distinction through validation so
+ * the caller can map it to the deliberate empty state.
+ */
+const LATEST_ACTION_NONE = Symbol("latest-action-none");
+
+/**
+ * GET /exceptions/{id}/actions/latest — the latest recovery
+ * action for an exception (legacy machine-to-machine path,
+ * ADR-011 compatibility treatment). Resolves to the empty
+ * state when the exception has no action at all.
+ */
+export function getLatestRecoveryAction(
+  exceptionId: string,
+): Promise<ApiResult<RecoveryActionRef>> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_LATEST_ACTION_PATH, exceptionId),
+    (body): RecoveryActionRef | null =>
+      body === null
+        ? (LATEST_ACTION_NONE as unknown as RecoveryActionRef)
+        : isLatestAction(body),
+  ).then((result) =>
+    result.kind === "data" && result.data === (LATEST_ACTION_NONE as unknown)
+      ? { kind: "empty" as const }
+      : result,
+  );
+}
+
+/**
+ * POST /exceptions/{id}/approve — approve the exception's
+ * latest recovery action. The body's only field is the
+ * planner identity recorded against the decision.
+ */
+export function approveRecoveryAction(
+  exceptionId: string,
+  request: ApproveRequest,
+): Promise<MutationResult<WorkflowOutcome>> {
+  return postToApi(
+    exceptionPath(APPROVE_PATH, exceptionId),
+    { approved_by: request.approved_by },
+    isWorkflowOutcome,
+  );
+}
+
+/**
+ * POST /exceptions/{id}/reject — reject the exception's
+ * latest recovery action. The exception remains open with
+ * no system recovery in flight.
+ */
+export function rejectRecoveryAction(
+  exceptionId: string,
+  request: RejectRequest,
+): Promise<MutationResult<WorkflowOutcome>> {
+  return postToApi(
+    exceptionPath(REJECT_PATH, exceptionId),
+    { rejected_by: request.rejected_by },
+    isWorkflowOutcome,
+  );
+}
+
+/**
+ * POST /recovery-actions/{id}/execute — execute an approved
+ * recovery action. No request body: the addressed action is
+ * the resource.
+ */
+export function executeRecoveryAction(
+  actionId: string,
+): Promise<MutationResult<WorkflowOutcome>> {
+  return postToApi(
+    EXECUTE_PATH.replace("{id}", encodeURIComponent(actionId)),
+    null,
+    isWorkflowOutcome,
+  );
+}
+
+/**
+ * POST /v1/exceptions/{id}/manual-resolution — record a
+ * planner-performed manual resolution for an exception the
+ * system could not recover automatically.
+ */
+export function recordManualResolution(
+  exceptionId: string,
+  request: ManualResolutionRequest,
+): Promise<MutationResult<ManualResolutionOutcome>> {
+  return postToApi(
+    exceptionPath(MANUAL_RESOLUTION_PATH, exceptionId),
+    {
+      intervention_type: request.intervention_type,
+      external_party: request.external_party,
+      resolution_summary: request.resolution_summary,
+      recorded_by: request.recorded_by,
+      outcome: request.outcome,
+      ...(request.new_expected_delivery
+        ? { new_expected_delivery: request.new_expected_delivery }
+        : {}),
+      ...(request.notes ? { notes: request.notes } : {}),
+    },
+    isManualResolutionOutcome,
   );
 }
 

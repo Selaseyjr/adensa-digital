@@ -360,6 +360,8 @@ describe("workflow action", () => {
       <WorkflowAction
         state={makeInvestigationState()}
         interventions={[makeManualIntervention()]}
+        exceptionId="EXC-001529"
+        latestActionId="ACT-000001"
       />,
     );
 
@@ -377,15 +379,18 @@ describe("workflow action", () => {
     render(
       <WorkflowAction
         state={makeInvestigationState({
-          state: "Executed, still open",
+          // The classifier's literal state string (em dash).
+          state: "Executed — still open",
           follow_up_required: true,
           reason: "The executed recovery did not resolve the exception.",
         })}
         interventions={[]}
+        exceptionId="EXC-001529"
+        latestActionId="ACT-000001"
       />,
     );
 
-    expect(screen.getByText("Executed, still open")).toBeInTheDocument();
+    expect(screen.getByText("Executed — still open")).toBeInTheDocument();
     expect(
       screen.getByText(
         "The recovery action was executed; the exception remains open and requires follow-up.",
@@ -398,6 +403,8 @@ describe("workflow action", () => {
       <WorkflowAction
         state={makeInvestigationState()}
         interventions={[]}
+        exceptionId="EXC-001529"
+        latestActionId="ACT-000001"
       />,
     );
 

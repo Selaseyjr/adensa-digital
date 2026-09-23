@@ -284,6 +284,96 @@ export interface DecisionBrief {
 }
 
 // ==================================================
+// WORKFLOW MUTATION CONTRACTS (P7.2)
+// ==================================================
+
+/**
+ * The outcome of the legacy machine-to-machine workflow
+ * mutations (`POST /exceptions/{id}/approve`, `POST
+ * /exceptions/{id}/reject`, `POST
+ * /recovery-actions/{id}/execute`) — consumed exactly as the
+ * backend produces it (ADR-011 compatibility treatment; not
+ * re-versioned as part of P7).
+ */
+export interface WorkflowOutcome {
+  success: boolean;
+  message: string;
+  action_id: string | null;
+  shipment_id: string | null;
+  previous_mode: string | null;
+  new_mode: string | null;
+}
+
+/** The recorded manual-resolution outcome: the workflow fields plus the intervention record. */
+export interface ManualResolutionOutcome extends WorkflowOutcome {
+  exception_id: string;
+  intervention_id: string;
+  intervention_type: string;
+  external_party: string;
+  resolution_summary: string;
+  new_expected_delivery: string | null;
+  outcome: string;
+  notes: string | null;
+  recorded_by: string;
+  recorded_at: string;
+  exception_status: string;
+}
+
+/**
+ * The latest recovery-action reference for an exception, as
+ * `GET /exceptions/{id}/actions/latest` returns it — the
+ * server-side source for the execute step's action id.
+ */
+export interface RecoveryActionRef {
+  action_id: string;
+  option_id: string;
+  action_type: string;
+  status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  executed_at: string | null;
+}
+
+/** The payload `POST /exceptions/{id}/approve` requires. */
+export interface ApproveRequest {
+  approved_by: string;
+}
+
+/** The payload `POST /exceptions/{id}/reject` requires. */
+export interface RejectRequest {
+  rejected_by: string;
+}
+
+/**
+ * The payload `POST /v1/exceptions/{id}/manual-resolution`
+ * requires — values mirror the backend's service-level
+ * domain constraints (app/services.py); the backend remains * the authoritative validator.
+ */
+
+export interface ManualResolutionRequest {
+  intervention_type: string;
+  external_party: string;
+  resolution_summary: string;
+  recorded_by: string;
+  outcome: string;
+  new_expected_delivery?: string | null;
+  notes?: string | null;
+}
+
+/** Intervention types accepted by the existing manual-resolution contract. */
+export const INTERVENTION_TYPES = [
+  "Carrier call",
+  "Carrier email",
+  "Supplier coordination",
+  "Customer coordination",
+  "Internal coordination",
+  "Other",
+] as const;
+
+/** Outcomes accepted by the existing manual-resolution contract. */
+export const MANUAL_OUTCOMES = ["Resolved", "Still Open"] as const;
+
+// ==================================================
 // ERROR CONTRACT
 // ==================================================
 

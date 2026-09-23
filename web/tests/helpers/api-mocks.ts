@@ -14,9 +14,12 @@ import type {
   InboxRow,
   InvestigationState,
   ManualInterventionRecord,
+  ManualResolutionOutcome,
+  RecoveryActionRef,
   RecoveryAssessment,
   ScoredOption,
   SustainabilityComparison,
+  WorkflowOutcome,
 } from "@/lib/types/api";
 
 export const API_BASE_URL = "http://127.0.0.1:8000";
@@ -34,6 +37,20 @@ export function exceptionApiPath(
 export const contextPath = (id?: string) =>
   exceptionApiPath("context", id);
 export const statePath = (id?: string) => exceptionApiPath("state", id);
+
+// Workflow mutations: approve/reject/execute live on the legacy
+// machine-to-machine compatibility paths (ADR-011) — the exact
+// URLs the production client posts to.
+export const approveApiPath = (id = "EXC-001529") =>
+  `${API_BASE_URL}/exceptions/${encodeURIComponent(id)}/approve`;
+export const rejectApiPath = (id = "EXC-001529") =>
+  `${API_BASE_URL}/exceptions/${encodeURIComponent(id)}/reject`;
+export const executeApiPath = (actionId = "ACT-000001") =>
+  `${API_BASE_URL}/recovery-actions/${encodeURIComponent(actionId)}/execute`;
+export const manualResolutionApiPath = (id = "EXC-001529") =>
+  `${API_BASE_URL}/v1/exceptions/${encodeURIComponent(id)}/manual-resolution`;
+export const latestActionApiPath = (id = "EXC-001529") =>
+  `${API_BASE_URL}/exceptions/${encodeURIComponent(id)}/actions/latest`;
 export const assessmentPath = (id?: string) =>
   exceptionApiPath("assessment", id);
 export const historyPath = (id?: string) => exceptionApiPath("history", id);
@@ -315,6 +332,62 @@ export function makeManualIntervention(
   };
 }
 
+// --------------------------------------------------
+// WORKFLOW MUTATION PAYLOAD FACTORIES
+// --------------------------------------------------
+
+export function makeWorkflowOutcome(
+  overrides: Partial<WorkflowOutcome> = {},
+): WorkflowOutcome {
+  return {
+    success: true,
+    message: "Recovery action ACT-000001 approved successfully.",
+    action_id: "ACT-000001",
+    shipment_id: "SHP-SIM-0002",
+    previous_mode: "Sea",
+    new_mode: "Road",
+    ...overrides,
+  };
+}
+
+export function makeManualResolutionOutcome(
+  overrides: Partial<ManualResolutionOutcome> = {},
+): ManualResolutionOutcome {
+  return {
+    ...makeWorkflowOutcome({
+      message: "Manual resolution INT-0001 recorded for EXC-001529.",
+    }),
+    exception_id: "EXC-001529",
+    intervention_id: "INT-0001",
+    intervention_type: "Carrier call",
+    external_party: "Ocean carrier ops",
+    resolution_summary:
+      "Carrier confirmed a revised delivery plan after planner coordination.",
+    new_expected_delivery: "2026-09-18",
+    outcome: "Resolved",
+    notes: null,
+    recorded_by: "P. Planner",
+    recorded_at: "2026-09-21 10:30",
+    exception_status: "Resolved",
+    ...overrides,
+  };
+}
+
+export function makeLatestAction(
+  overrides: Partial<RecoveryActionRef> = {},
+): RecoveryActionRef {
+  return {
+    action_id: "ACT-000001",
+    option_id: "OPT-0001",
+    action_type: "Execute recovery",
+    status: "Pending Approval",
+    approved_by: null,
+    approved_at: null,
+    executed_at: null,
+    ...overrides,
+  };
+}
+
 /** Intercept every /v1 endpoint the workspace and queue consume. */
 export function createApiServer() {
   return setupServer(
@@ -334,6 +407,35 @@ export function createApiServer() {
     ),
     http.get(decisionBriefPath(), () =>
       HttpResponse.json(makeDecisionBrief()),
+    ),
+    http.get(latestActionApiPath(), () =>
+      HttpResponse.json(makeLatestAction()),
+    ),
+    http.post(approveApiPath(), () =>
+      HttpResponse.json(
+        makeWorkflowOutcome({
+          message: "Recovery action ACT-000001 approved successfully.",
+        }),
+      ),
+    ),
+    http.post(rejectApiPath(), () =>
+      HttpResponse.json(
+        makeWorkflowOutcome({
+          success: true,
+          message: "Recovery action ACT-000001 rejected successfully.",
+        }),
+      ),
+    ),
+    http.post(executeApiPath(), () =>
+      HttpResponse.json(
+        makeWorkflowOutcome({
+          success: true,
+          message: "Recovery executed successfully for SHP-SIM-0002.",
+        }),
+      ),
+    ),
+    http.post(manualResolutionApiPath(), () =>
+      HttpResponse.json(makeManualResolutionOutcome()),
     ),
   );
 }

@@ -534,3 +534,86 @@ a {
     flex-basis: 100px;
   }
 }
+
+/* ==================================================
+   WORKFLOW ACTION CONTROLS (P7.2)
+   ================================================== */
+
+.action-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-top: 0.75rem;
+}
+
+.action-button {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.action-button:hover:not(:disabled) {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.action-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.action-button-secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.action-button-secondary:hover:not(:disabled) {
+  background: var(--neutral-chip);
+}
+
+.action-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  min-width: 180px;
+}
+
+.action-field input,
+.action-field select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.action-field input:disabled,
+.action-field select:disabled {
+  background: var(--neutral-chip);
+}
+
+.action-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.action-result-banner {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: var(--surface);
+  flex-basis: 100%;
+}

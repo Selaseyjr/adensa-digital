@@ -81,6 +81,31 @@ backend's advisory label, disclaimer and verification points verbatim,
 and degrades to an honest unavailable state without affecting the rest
 of the workspace.
 
+### Workflow actions (P7.2)
+
+The workspace is interactive: approve, reject, execute and manual
+resolution are drivable from the Workflow Action section. The mutations
+cross one deliberate boundary:
+
+```text
+WorkflowAction (the workspace's first client component)
+      ↓
+web/lib/actions/workflow.ts ("use server" actions)
+      ↓
+web/lib/api/client.ts (POST twin of the read helpers)
+      ↓
+existing mutation contracts (legacy paths + /v1 manual-resolution)
+```
+
+Server actions run on the Node server, so the API origin and the
+machine credential still never reach the browser. UI gating (which
+controls render for which persisted state) is UX only: the backend
+workflow engine remains authoritative, and its 409 guard messages are
+rendered verbatim rather than re-interpreted. Actions render only for
+the classifier's literal state names ("Decision required", "Awaiting
+execution", "No system recovery available", "Executed — still open");
+a successful mutation revalidates the workspace and the list surfaces.
+
 ## Configuration
 
 Copy `.env.example` to `.env.local`:

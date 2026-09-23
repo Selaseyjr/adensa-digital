@@ -32,6 +32,7 @@ import {
   getSustainabilityAssessment,
   getManualInterventions,
   getDecisionBrief,
+  getLatestRecoveryAction,
 } from "@/lib/api/client";
 import type { ApiResult } from "@/lib/api/client";
 import {
@@ -55,6 +56,7 @@ export type WorkspaceData = {
   sustainability: Awaited<ReturnType<typeof getSustainabilityAssessment>>;
   interventions: Awaited<ReturnType<typeof getManualInterventions>>;
   brief: Awaited<ReturnType<typeof getDecisionBrief>>;
+  latestAction: Awaited<ReturnType<typeof getLatestRecoveryAction>>;
 };
 
 export async function loadInvestigationData(
@@ -68,6 +70,7 @@ export async function loadInvestigationData(
     sustainability: await getSustainabilityAssessment(exceptionId),
     interventions: await getManualInterventions(exceptionId),
     brief: await getDecisionBrief(exceptionId),
+    latestAction: await getLatestRecoveryAction(exceptionId),
   };
 }
 
@@ -212,6 +215,12 @@ async function InvestigationWorkspace({
           state={state}
           interventions={
             data.interventions.kind === "data" ? data.interventions.data : []
+          }
+          exceptionId={exceptionId}
+          latestActionId={
+            data.latestAction.kind === "data"
+              ? data.latestAction.data.action_id
+              : null
           }
         />
       ) : (

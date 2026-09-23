@@ -289,7 +289,7 @@ SQLite (default) + PostgreSQL            ← done (P5)
 authentication / deployment hardening    ← future
 ```
 
-**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the remaining Next.js surfaces (investigation workspace, decision support, operational history, workflow actions, administration), production PostgreSQL deployment (connection pooling, managed hosting, backups), production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities.
+**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the remaining Next.js surfaces (administration), production PostgreSQL deployment (connection pooling, managed hosting, backups), production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities. The Next.js Investigation Workspace now drives the full workflow — approve, reject, execute and manual resolution go through server actions to the existing mutation contracts (ADR-011 compatibility paths), so a planner can complete Detect → Resolve without Streamlit.
 
 ## Author
 
