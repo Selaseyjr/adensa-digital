@@ -1,6 +1,8 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 
 # ==================================================
 # DATABASE LOCATION
@@ -8,6 +10,18 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATABASE_PATH = BASE_DIR / "data" / "adensa.db"
+
+# This module exercises the development database directly and
+# executes its checks at import time. It is a pytest-collected
+# module, so an environment without the git-ignored dev DB
+# (a fresh clone, or CI's PostgreSQL job) must skip collection
+# instead of failing it.
+if not DATABASE_PATH.exists():
+    pytest.skip(
+        "data/adensa.db is not present; the legacy schema check "
+        "runs against the initialized development database",
+        allow_module_level=True,
+    )
 
 
 # ==================================================

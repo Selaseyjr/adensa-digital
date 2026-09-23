@@ -233,23 +233,33 @@ def test_fresh_database_reaches_current_version(postgres_database):
         connection.close()
 
 
-def test_current_database_is_a_noop(postgres_database):
+def test_current_database_is_a_noop(postgres_database, monkeypatch):
     """A schema-current PostgreSQL database performs no work."""
 
+    import app.database as database_module
     from app import migrations
 
     postgres_database.initialize_database()
 
-    def _must_not_migrate(connection):
-        raise AssertionError("migrations ran on a current database")
+    calls = []
 
-    original = migrations.apply_pending_migrations
-    migrations.apply_pending_migrations = _must_not_migrate
+    def _tracking_apply(connection):
+        calls.append(connection)
 
-    try:
-        postgres_database.initialize_database()
-    finally:
-        migrations.apply_pending_migrations = original
+        return migrations.get_schema_version(connection)
+
+    # initialize_database resolves apply_pending_migrations from
+    # the app.database module namespace at call time, so the
+    # tracking substitute must be bound there.
+    monkeypatch.setattr(
+        database_module,
+        "apply_pending_migrations",
+        _tracking_apply,
+    )
+
+    postgres_database.initialize_database()
+
+    assert calls == []
 
 
 def test_foreign_keys_are_enforced(postgres_database):
