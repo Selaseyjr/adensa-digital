@@ -54,9 +54,31 @@ API. The frontend adds presentation only.
 | Route | Status | Source |
 |---|---|---|
 | `/` — Control Tower | Implemented | `GET /v1/control-tower/summary` |
-| `/exceptions` — Inbox work queue + selection | Implemented | `GET /v1/exceptions/inbox` |
+| `/exceptions` — Inbox work queue | Implemented | `GET /v1/exceptions/inbox` |
+| `/exceptions/[id]` — Investigation Workspace | Implemented | `/v1/exceptions/{id}/context`, `/state`, `/assessment`, `/history`, `/sustainability`, `/interventions` |
 | `/operations` | Placeholder | future operational refresh/simulation UI |
 | `/administration` | Placeholder | future configuration UI |
+
+### Investigation Workspace
+
+The selected-exception workspace preserves the W4 information hierarchy:
+
+```text
+State → Situation & Impact → Decision Support →
+Operational History → AI Advisory → Workflow Action
+```
+
+Sections compose independently: only a context failure collapses the
+workspace; every other section degrades to its own honest failure or
+empty panel. The decision support renders the deterministic assessment
+verbatim — recommendation, alternatives, evaluated (infeasible) options,
+factor scores, weights, weighted contributions, trade-offs, confidence —
+with no client-side recalculation. Sustainability stays subordinate and
+prototype-framed. The AI Advisory section is currently an explicit
+pending placeholder: the decision brief exists in the backend
+(`app/ai_support.py`) but is not yet exposed through `/v1` (reported in
+`docs/p4-ai-advisory-api-gap.md`); the deterministic recommendation
+remains the authoritative decision support.
 
 ## Configuration
 
@@ -86,7 +108,7 @@ npm run dev        # http://localhost:3000
 
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint (next/core-web-vitals + next/typescript)
-npm run test       # vitest (34 tests, msw-mocked /v1 boundary)
+npm run test       # vitest (54 tests, msw-mocked /v1 boundary)
 npm run build      # production build
 ```
 

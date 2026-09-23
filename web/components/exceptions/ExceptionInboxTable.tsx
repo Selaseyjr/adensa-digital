@@ -66,7 +66,7 @@ export function ExceptionInboxTable({
                 <td>
                   <Link
                     className="queue-link"
-                    href={`/exceptions?exception=${encodeURIComponent(
+                    href={`/exceptions/${encodeURIComponent(
                       row.exception_id,
                     )}`}
                     aria-current={isSelected ? "true" : undefined}

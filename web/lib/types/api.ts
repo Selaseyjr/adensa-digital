@@ -88,6 +88,182 @@ export interface InboxRow {
 }
 
 // ==================================================
+// INVESTIGATION WORKSPACE (P4)
+// ==================================================
+
+/** The investigation context for one exception (Situation & Impact surface). */
+export interface ExceptionContext {
+  exception_id: string;
+  shipment_id: string;
+  order_id: string;
+  customer_id: string;
+  customer_name: string;
+  exception_type: string;
+  severity: string;
+  status: string;
+  description: string;
+  priority: string;
+  origin: string;
+  destination: string;
+  route: string;
+  transport_mode: string;
+  carrier_id: string;
+  shipment_status: string;
+  planned_departure: string;
+  estimated_arrival: string | null;
+  required_delivery_date: string;
+}
+
+/** The persisted-evidence classification of an investigated exception. */
+export interface InvestigationState {
+  state: string;
+  follow_up_required: boolean;
+  reason: string;
+}
+
+/** One reconstructed operational-history event (timestamp is null for steps the schema never dates). */
+export interface HistoryEntry {
+  timestamp: string | null;
+  event: string;
+  detail: string;
+  actor: string;
+  sequence: number;
+}
+
+/** A scored recovery option exactly as the decision engine produced it. */
+export interface ScoredOption {
+  option_id: string;
+  transport_mode: string;
+  carrier_id: string;
+  estimated_cost: number;
+  estimated_transit_days: number;
+  risk_score: number;
+  cost_score: number;
+  transit_score: number;
+  risk_component: number;
+  priority_score: number;
+  cost_contribution: number;
+  transit_contribution: number;
+  risk_contribution: number;
+  priority_contribution: number;
+  decision_score: number;
+  confidence: string | null;
+  reason: string | null;
+}
+
+/** An evaluated recovery option when no feasible recommendation exists. */
+export interface EvaluatedOption {
+  option_id: string;
+  transport_mode: string;
+  carrier_id: string;
+  estimated_cost: number;
+  estimated_transit_days: number;
+  risk_score: number;
+  feasible: boolean;
+}
+
+/** One factor's values across the assessed options. */
+export interface FactorValue {
+  option_id: string;
+  transport_mode: string;
+  score: number;
+  contribution: number;
+}
+
+export interface RationaleFactor {
+  factor: string;
+  weight: number;
+  values: FactorValue[];
+}
+
+export interface RationaleTradeOff {
+  option_id: string;
+  transport_mode: string;
+  stronger_factors: string[];
+}
+
+/** The decision rationale: policy weights, per-factor breakdown, trade-offs, confidence basis. */
+export interface RecommendationRationale {
+  weights: Record<string, number>;
+  factor_breakdown: RationaleFactor[];
+  trade_offs: RationaleTradeOff[];
+  confidence_basis: string;
+}
+
+/**
+ * The recovery assessment. `recommendation: null` with
+ * `evaluated_options` populated is the backend's structured
+ * "no feasible system recovery" outcome — the presentation
+ * reads that distinction, it does not recompute it.
+ */
+export interface RecoveryAssessment {
+  recommendation: ScoredOption | null;
+  alternatives: ScoredOption[];
+  evaluated_options: EvaluatedOption[];
+  rationale: RecommendationRationale | null;
+}
+
+/** One option's estimated emissions, or an honest unavailable record. */
+export interface SustainabilityEstimate {
+  transport_mode: string;
+  option_id: string | null;
+  status: string;
+  reason: string | null;
+  shipment_weight_kg: number | null;
+  shipment_weight_tonnes: number | null;
+  distance_km: number | null;
+  emissions_factor: number | null;
+  estimated_co2e_kg: number | null;
+  unit: string | null;
+  methodology: string | null;
+  data_quality_note: string | null;
+}
+
+export interface SustainabilityTradeOff {
+  option_id: string;
+  transport_mode: string;
+  estimated_co2e_kg: number;
+  difference_kg: number;
+  relative_to_recommendation: string;
+}
+
+export interface LowestEmissionOption {
+  option_id: string;
+  transport_mode: string;
+  estimated_co2e_kg: number;
+}
+
+/** Informational emissions comparison; never part of the recommendation. */
+export interface SustainabilityComparison {
+  status: string;
+  unit: string;
+  methodology: string;
+  data_quality_note: string;
+  estimates: SustainabilityEstimate[];
+  trade_offs: SustainabilityTradeOff[];
+  lowest_emission_option: LowestEmissionOption | null;
+}
+
+/** The structured unavailable state when there is nothing to compare. */
+export interface SustainabilityUnavailable {
+  status: string;
+  reason: string;
+}
+
+export interface ManualInterventionRecord {
+  intervention_id: string;
+  exception_id: string;
+  intervention_type: string;
+  external_party: string;
+  resolution_summary: string;
+  new_expected_delivery: string | null;
+  outcome: string;
+  notes: string | null;
+  recorded_by: string;
+  recorded_at: string;
+}
+
+// ==================================================
 // ERROR CONTRACT
 // ==================================================
 

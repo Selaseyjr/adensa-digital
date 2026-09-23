@@ -74,7 +74,7 @@ describe("exception work queue table", () => {
     expect(screen.getByText("Executed, still open")).toBeInTheDocument();
   });
 
-  it("links each exception for selection with the exception in the URL", () => {
+  it("links each exception to its investigation route", () => {
     render(
       <ExceptionInboxTable
         rows={[makeInboxRow()]}
@@ -86,7 +86,7 @@ describe("exception work queue table", () => {
 
     expect(link).toHaveAttribute(
       "href",
-      "/exceptions?exception=EXC-001529",
+      "/exceptions/EXC-001529",
     );
   });
 
@@ -103,6 +103,7 @@ describe("exception work queue table", () => {
     expect(link).toHaveAttribute("aria-current", "true");
   });
 });
+;
 
 describe("selected exception panel", () => {
   it("presents the situation fields the inbox contract supplies", () => {

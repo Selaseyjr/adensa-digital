@@ -24,7 +24,14 @@
 import type {
   ApiErrorBody,
   ControlTowerSummary,
+  ExceptionContext,
+  HistoryEntry,
   InboxRow,
+  InvestigationState,
+  ManualInterventionRecord,
+  RecoveryAssessment,
+  SustainabilityComparison,
+  SustainabilityUnavailable,
 } from "@/lib/types/api";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -51,6 +58,16 @@ const REQUEST_HEADERS: HeadersInit = {
 
 const CONTROL_TOWER_SUMMARY_PATH = "/v1/control-tower/summary";
 const EXCEPTION_INBOX_PATH = "/v1/exceptions/inbox";
+const EXCEPTION_CONTEXT_PATH = "/v1/exceptions/{id}/context";
+const EXCEPTION_STATE_PATH = "/v1/exceptions/{id}/state";
+const EXCEPTION_ASSESSMENT_PATH = "/v1/exceptions/{id}/assessment";
+const EXCEPTION_HISTORY_PATH = "/v1/exceptions/{id}/history";
+const EXCEPTION_SUSTAINABILITY_PATH = "/v1/exceptions/{id}/sustainability";
+const EXCEPTION_INTERVENTIONS_PATH = "/v1/exceptions/{id}/interventions";
+
+function exceptionPath(template: string, exceptionId: string): string {
+  return template.replace("{id}", encodeURIComponent(exceptionId));
+}
 
 export type ApiResult<T> =
   | { kind: "data"; data: T }
@@ -169,6 +186,205 @@ export function isInboxRow(body: unknown): InboxRow | null {
     : null;
 }
 
+function isInvestigationState(body: unknown): InvestigationState | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  return typeof candidate.state === "string" &&
+    typeof candidate.follow_up_required === "boolean" &&
+    typeof candidate.reason === "string"
+    ? (body as InvestigationState)
+    : null;
+}
+
+function isExceptionContext(body: unknown): ExceptionContext | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  const strings = [
+    "exception_id",
+    "shipment_id",
+    "order_id",
+    "customer_id",
+    "customer_name",
+    "exception_type",
+    "severity",
+    "status",
+    "description",
+    "priority",
+    "origin",
+    "destination",
+    "route",
+    "transport_mode",
+    "carrier_id",
+    "shipment_status",
+    "planned_departure",
+    "required_delivery_date",
+  ];
+
+  return strings.every((key) => typeof candidate[key] === "string") &&
+    (candidate.estimated_arrival === null ||
+      typeof candidate.estimated_arrival === "string")
+    ? (body as ExceptionContext)
+    : null;
+}
+
+function isHistoryEntry(body: unknown): HistoryEntry | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  return typeof candidate.event === "string" &&
+    typeof candidate.detail === "string" &&
+    typeof candidate.actor === "string" &&
+    typeof candidate.sequence === "number" &&
+    (candidate.timestamp === null ||
+      typeof candidate.timestamp === "string")
+    ? (body as HistoryEntry)
+    : null;
+}
+
+function isScoredOption(body: unknown): boolean {
+  if (typeof body !== "object" || body === null) {
+    return false;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  return (
+    [
+      "option_id",
+      "transport_mode",
+      "carrier_id",
+      "estimated_cost",
+      "estimated_transit_days",
+      "risk_score",
+      "cost_score",
+      "transit_score",
+      "risk_component",
+      "priority_score",
+      "cost_contribution",
+      "transit_contribution",
+      "risk_contribution",
+      "priority_contribution",
+      "decision_score",
+    ].every((key) =>
+      key === "option_id" ||
+      key === "transport_mode" ||
+      key === "carrier_id"
+        ? typeof candidate[key] === "string"
+        : typeof candidate[key] === "number",
+    ) &&
+    (candidate.confidence === null ||
+      typeof candidate.confidence === "string") &&
+    (candidate.reason === null || typeof candidate.reason === "string")
+  );
+}
+
+function isRecoveryAssessment(body: unknown): RecoveryAssessment | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  if (
+    !Array.isArray(candidate.alternatives) ||
+    !Array.isArray(candidate.evaluated_options) ||
+    !candidate.alternatives.every(isScoredOption)
+  ) {
+    return null;
+  }
+
+  const recommendationOk =
+    candidate.recommendation === null ||
+    (candidate.recommendation !== null && isScoredOption(candidate.recommendation));
+
+  if (!recommendationOk) {
+    return null;
+  }
+
+  if (candidate.rationale === null || candidate.rationale === undefined) {
+    return { ...(body as RecoveryAssessment), rationale: null };
+  }
+
+  const rationale = candidate.rationale as Record<string, unknown>;
+
+  return typeof rationale.confidence_basis === "string" &&
+    typeof rationale.weights === "object" &&
+    rationale.weights !== null &&
+    Array.isArray(rationale.factor_breakdown) &&
+    Array.isArray(rationale.trade_offs)
+    ? (body as RecoveryAssessment)
+    : null;
+}
+
+function isSustainabilityPayload(
+  body: unknown,
+): SustainabilityComparison | SustainabilityUnavailable | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  if (typeof candidate.status !== "string") {
+    return null;
+  }
+
+  // The structured unavailable state: status + reason only.
+  if (
+    candidate.estimates === undefined &&
+    typeof candidate.reason === "string"
+  ) {
+    return body as SustainabilityUnavailable;
+  }
+
+  return Array.isArray(candidate.estimates) &&
+    Array.isArray(candidate.trade_offs) &&
+    typeof candidate.unit === "string" &&
+    typeof candidate.methodology === "string" &&
+    typeof candidate.data_quality_note === "string"
+    ? (body as SustainabilityComparison)
+    : null;
+}
+
+function isManualIntervention(
+  body: unknown,
+): ManualInterventionRecord | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  const strings = [
+    "intervention_id",
+    "exception_id",
+    "intervention_type",
+    "external_party",
+    "resolution_summary",
+    "outcome",
+    "recorded_by",
+    "recorded_at",
+  ];
+
+  return strings.every((key) => typeof candidate[key] === "string") &&
+    (candidate.new_expected_delivery === null ||
+      typeof candidate.new_expected_delivery === "string") &&
+    (candidate.notes === null || typeof candidate.notes === "string")
+    ? (body as ManualInterventionRecord)
+    : null;
+}
+
 /** GET /v1/control-tower/summary */
 export function getControlTowerSummary(): Promise<ApiResult<ControlTowerSummary>> {
   return getFromApi(CONTROL_TOWER_SUMMARY_PATH, isControlTowerSummary);
@@ -191,6 +407,93 @@ export function getExceptionInbox(): Promise<ApiResult<InboxRow[]>> {
     result.kind === "data" && result.data.length === 0
       ? { kind: "empty" as const }
       : result,
+  );
+}
+
+/** GET /v1/exceptions/{id}/context — unknown exceptions map to the empty state. */
+export function getExceptionContext(
+  exceptionId: string,
+): Promise<ApiResult<ExceptionContext>> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_CONTEXT_PATH, exceptionId),
+    isExceptionContext,
+  );
+}
+
+/** GET /v1/exceptions/{id}/state */
+export function getInvestigationState(
+  exceptionId: string,
+): Promise<ApiResult<InvestigationState>> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_STATE_PATH, exceptionId),
+    isInvestigationState,
+  );
+}
+
+/** GET /v1/exceptions/{id}/assessment */
+export function getRecoveryAssessment(
+  exceptionId: string,
+): Promise<ApiResult<RecoveryAssessment>> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_ASSESSMENT_PATH, exceptionId),
+    isRecoveryAssessment,
+  );
+}
+
+/** GET /v1/exceptions/{id}/history */
+export function getExceptionHistory(
+  exceptionId: string,
+): Promise<ApiResult<HistoryEntry[]>> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_HISTORY_PATH, exceptionId),
+    (body) => {
+      const rows = validateArray<HistoryEntry>(body);
+
+      if (rows === null || !rows.every((row) => isHistoryEntry(row) !== null)) {
+        return null;
+      }
+
+      return rows;
+    },
+  );
+}
+
+/**
+ * GET /v1/exceptions/{id}/sustainability — resolves to the
+ * structured `SustainabilityUnavailable` payload when the
+ * backend has nothing to compare (HTTP 200 with a 2-field
+ * body), so components can render an honest "no comparison
+ * available" panel from the data state.
+ */
+export function getSustainabilityAssessment(
+  exceptionId: string,
+): Promise<
+  ApiResult<SustainabilityComparison | SustainabilityUnavailable>
+> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_SUSTAINABILITY_PATH, exceptionId),
+    isSustainabilityPayload,
+  );
+}
+
+/** GET /v1/exceptions/{id}/interventions */
+export function getManualInterventions(
+  exceptionId: string,
+): Promise<ApiResult<ManualInterventionRecord[]>> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_INTERVENTIONS_PATH, exceptionId),
+    (body) => {
+      const rows = validateArray<ManualInterventionRecord>(body);
+
+      if (
+        rows === null ||
+        !rows.every((row) => isManualIntervention(row) !== null)
+      ) {
+        return null;
+      }
+
+      return rows;
+    },
   );
 }
 
