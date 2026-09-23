@@ -264,9 +264,10 @@ python -m app.generate_data
 |---|---|
 | `ADENSA_API_KEY` | API key required by all operational FastAPI endpoints. Supplied through the environment; never hard-coded or committed. If unset, the API fails closed for protected routes while `/health` and `/ready` stay available. |
 | `ADENSA_CORS_ORIGINS` | Comma-separated list of browser origins allowed to call the API from a separately hosted frontend (CORS). Empty by default — no browser origin is trusted unless the deployment configures one; machine-to-machine callers are unaffected. |
+| `DATABASE_URL` | Database backend selection. Absent = the default SQLite development database. Accepts `sqlite:///` (explicit path) or `postgresql://` (P5.3 backend; requires `requirements-postgres.txt`). Credentials live only in this variable and are never logged. |
 | `API_BASE_URL` (web/) | Server-side base URL the Next.js client uses to reach the FastAPI `/v1` boundary. Deliberately **not** a `NEXT_PUBLIC_` variable: the API origin and the machine-to-machine API key never ship to the browser. See `web/.env.example`. |
 
-No secrets are stored in the repository.
+No secrets are stored in the repository. `.env.example` at the repository root documents the backend variable contract with safe placeholders — copy it to `.env` (git-ignored) and adjust per environment. On startup the API verifies database reachability and schema version and fails fast when either cannot be established; `/ready` continues to expose that state at runtime. Deployment guidance (startup sequence, health/readiness probes, production server invocation, the local/CI/production distinction) is documented in `docs/deployment.md`.
 
 ## Current status and future direction
 

@@ -32,16 +32,18 @@ Rules kept by this boundary:
   error responses.
 """
 
+import logging
 import secrets
+from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from app import services
-from app.config import ADENSA_API_KEY, ADENSA_CORS_ORIGINS
+from app.config import ADENSA_API_KEY, ADENSA_CORS_ORIGINS, get_database_config
 from app.database import get_connection
 from app.migrations import CURRENT_VERSION, get_schema_version
 from app.errors import (
@@ -51,7 +53,77 @@ from app.errors import (
 )
 
 
-app = FastAPI(title="Adensa Digital API")
+logger = logging.getLogger(__name__)
+
+
+# ==================================================
+# STARTUP VERIFICATION (lifespan)
+# ==================================================
+
+
+def verify_database_startup() -> None:
+    """
+    Verify the configured database is reachable and its schema
+    is at the current migration version.
+
+    Deployment model (ADR-012): migrations are applied by the
+    bootstrap/CLI path before the API starts — this check only
+    verifies; it never migrates. Failures raise so the server
+    fails fast instead of serving requests against a database
+    it cannot use.
+
+    Log lines carry the redacted backend description only —
+    never credentials or connection strings.
+    """
+
+    description = get_database_config().safe_description()
+
+    try:
+        connection = get_connection()
+    except Exception:
+        logger.error(
+            "Startup verification failed: database unreachable (%s)",
+            description,
+        )
+        raise
+
+    try:
+        if get_schema_version(connection) < CURRENT_VERSION:
+            raise RuntimeError(
+                "Database schema is outdated: apply migrations "
+                "before starting the API."
+            )
+    except RuntimeError:
+        logger.error(
+            "Startup verification failed: %s", description
+        )
+        raise
+    except Exception:
+        logger.error(
+            "Startup verification failed: schema version could "
+            "not be read (%s)",
+            description,
+        )
+        raise
+    finally:
+        connection.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Verify the database contract before serving requests."""
+
+    verify_database_startup()
+
+    logger.info(
+        "Startup verification passed: %s",
+        get_database_config().safe_description(),
+    )
+
+    yield
+
+
+app = FastAPI(title="Adensa Digital API", lifespan=lifespan)
 
 
 # ==================================================
@@ -562,6 +634,34 @@ def invalid_transition_error_handler(request, exc):
     return JSONResponse(
         status_code=409,
         content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(Exception)
+def unexpected_exception_handler(request: Request, exc: Exception):
+    """
+    Last-resort handler: an unexpected application exception
+    must leave a server-side trace identifying where it
+    happened, while the client keeps receiving FastAPI's
+    generic 500 response (no internals, no stack details).
+
+    Deliberately logged without the request body, headers or
+    query string — those can carry credentials or operational
+    payloads.
+    """
+
+    # exc_info is passed explicitly: the handler runs outside
+    # the raising frame, so sys.exc_info() is empty here.
+    logger.exception(
+        "Unhandled exception on %s %s",
+        request.method,
+        request.url.path,
+        exc_info=exc,
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
     )
 
 

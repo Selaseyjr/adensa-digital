@@ -100,15 +100,20 @@ def test_ready_fails_against_outdated_schema(seeded_database, monkeypatch):
     connection.execute("PRAGMA user_version = 0")
     connection.commit()
 
-    try:
-        with TestClient(app) as client:
-            response = client.get("/ready")
+    # A context-managed TestClient runs the lifespan, which
+    # fails fast on a stale schema (P6.2 startup verification).
+    # The /ready degraded contract is exercised with the
+    # lifespan-less client: requests only, no startup hook.
+    client = TestClient(app)
 
-            assert response.status_code == 503
-            assert response.json() == {
-                "status": "degraded",
-                "database": "schema-outdated",
-            }
+    try:
+        response = client.get("/ready")
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "status": "degraded",
+            "database": "schema-outdated",
+        }
     finally:
         connection.execute(f"PRAGMA user_version = {CURRENT_VERSION}")
         connection.commit()
