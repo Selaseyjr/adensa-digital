@@ -35,8 +35,8 @@ Verified functionality in the current repository:
 - **Control tower** — an at-a-glance operational summary: open exceptions split into actionable vs monitoring, pending decisions, actions awaiting execution, critical exceptions, and recently resolved outcomes with their resolution path.
 - **Clients over one boundary** — the Next.js operational client, the Streamlit reference UI, the FastAPI API and the CLI all consume the same application service layer; no client contains SQL or business rules.
 - **Controlled data-arrival simulation** — a deterministic development mechanism that creates a new shipment arrival so the full pipeline (detect → recommend → decide → execute) can be demonstrated on demand.
-- **Automated testing** — 178 tests covering repositories, services, engines, workflow lifecycles, the API contract, the Streamlit UI (Streamlit AppTest) and the external integration contract, all on isolated temporary databases.
-- **CI** — GitHub Actions runs compile checks and the full test suite on every push.
+- **Automated testing** — 330+ tests covering repositories, services, engines, workflow lifecycles, the API contract, the Streamlit UI (Streamlit AppTest), the external integration contract and the SQLite↔PostgreSQL dialect boundary, all on isolated temporary databases.
+- **CI** — GitHub Actions runs compile checks and the full SQLite test suite on every push, a PostgreSQL 16 service-container job runs the opt-in `pytest -m postgres` integration suite, and the Next.js client is typechecked, linted, unit-tested and built.
 
 ## Architecture
 
@@ -60,7 +60,7 @@ flowchart TD
 | Application services | Orchestration, application-level projections (control tower, operational history), transaction boundaries for service-owned operations, typed error translation. |
 | Business engines | Domain rules: detection, option generation, decision scoring, workflow transitions, execution, simulation. |
 | Repositories | All SQL and data access. Read/write functions per aggregate; no business logic. |
-| Database | SQLite with foreign-key enforcement; schema evolved through the application-managed migration history (ADR-012), verified at readiness. |
+| Database | SQLite by default with foreign-key enforcement; PostgreSQL as a fully supported second backend selected by `DATABASE_URL` (see below). One migration history (ADR-012) and one SQL dialect translation at the persistence boundary serve both. |
 
 Workflow state is a small explicit state machine on recovery actions: `Pending Approval → Approved → Executed`, plus `Rejected` as a terminal alternative. Domain failures are typed (`RecoveryWorkflowError` and subtypes) and mapped to HTTP 409/404 at the API boundary.
 
@@ -147,7 +147,7 @@ python -m app.cli execution   # execution-engine load check (no action executed)
 
 ## Testing and engineering
 
-The test suite (178 tests) runs entirely on isolated temporary databases built with the production schema initializer and deterministic fixtures; the development database is never touched by tests.
+The backend test suite (330+ pytest tests) runs entirely on isolated temporary databases built with the production schema initializer and deterministic fixtures; the development database is never touched by tests.
 
 - **Repository tests** — data-access contracts for every repository read/write.
 - **Service tests** — orchestration contracts: review, approval, rejection, execution outcomes, manual resolution, operational refresh, history.
@@ -227,6 +227,23 @@ cd web && npm install && npm run dev   # requires the API running locally
 
 On first run the application initializes its SQLite database automatically: schema, synthetic master data, the operational dataset (orders, shipments, events), then exception detection, recovery-option generation and workflow actions. Subsequent starts reuse the existing database without regenerating it.
 
+### PostgreSQL backend
+
+PostgreSQL is a fully supported persistence backend, selected purely through configuration — no code changes:
+
+```bash
+# SQLite (default — no configuration needed)
+uvicorn app.api:app
+
+# PostgreSQL
+DATABASE_URL=postgresql://user:password@host:5432/adensa uvicorn app.api:app
+
+# Install the PostgreSQL driver (isolated; not required for SQLite development)
+pip install -r requirements-postgres.txt
+```
+
+Both backends share the same repositories, engines, services, migration history (ADR-012) and API contracts. The SQLite dialect is translated once at the persistence boundary (`app/pg_compat.py`); schema type decisions (`estimated_impact` as text, real `BOOLEAN` columns, `DOUBLE PRECISION` for monetary/numeric values) are documented there. The opt-in integration suite (`pip install -r requirements-postgres.txt && pytest -m postgres`, against a database named by `TEST_DATABASES_URL`) verifies migrations, repository round-trips and the operational lifecycle against a live PostgreSQL server — the same suite CI runs against a PostgreSQL 16 service container.
+
 ```bash
 # Run the API locally
 uvicorn app.api:app
@@ -266,12 +283,12 @@ versioned FastAPI application boundary   ← done (ADR-011)
         ↓
 Next.js operational client               ← current (foundation)
         ↓
-PostgreSQL + migrations                  ← future
+SQLite (default) + PostgreSQL            ← done (P5)
         ↓
 authentication / deployment hardening    ← future
 ```
 
-**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the remaining Next.js surfaces (investigation workspace, decision support, operational history, workflow actions, administration), PostgreSQL with schema migrations, production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities.
+**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the remaining Next.js surfaces (investigation workspace, decision support, operational history, workflow actions, administration), production PostgreSQL deployment (connection pooling, managed hosting, backups), production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities.
 
 ## Author
 

@@ -1,0 +1,15 @@
+# PostgreSQL backend (P5.3) — optional, isolated dependency set.
+#
+# The default SQLite development backend (requirements.txt) never
+# needs anything from this file: DATABASE_URL absent continues to
+# resolve to SQLite with zero PostgreSQL components installed.
+# Install this set only when running the PostgreSQL backend or
+# the opt-in PostgreSQL integration tests:
+#
+#     pip install -r requirements-postgres.txt
+#     pytest -m postgres
+#
+# Kept separate from requirements-api.txt on purpose: the API's
+# SQLite deployment path stays psycopg-free.
+
+psycopg[binary]==3.2.13

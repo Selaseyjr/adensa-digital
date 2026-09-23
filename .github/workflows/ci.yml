@@ -50,6 +50,48 @@ jobs:
       - name: Run test suite
         run: python -m pytest
 
+  postgres:
+    name: PostgreSQL integration (pg16)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: adensa
+          POSTGRES_PASSWORD: adensa_ci_password
+          POSTGRES_DB: adensa_server
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U adensa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-api.txt -r requirements-postgres.txt
+
+      # The same opt-in suite used locally: pytest -m postgres
+      # against a temporary database created on the service
+      # container. The SQLite suite above stays untouched.
+      - name: Run PostgreSQL integration tests
+        env:
+          TEST_DATABASES_URL: postgresql://adensa:adensa_ci_password@localhost:5432/adensa_server
+        run: python -m pytest -m postgres
+
   frontend:
     name: Frontend (typecheck, lint, test, build)
     runs-on: ubuntu-latest

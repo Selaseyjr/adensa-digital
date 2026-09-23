@@ -197,20 +197,47 @@ def test_factory_opens_sqlite_url_path(tmp_path, monkeypatch):
         connection.close()
 
 
-def test_factory_fails_fast_for_postgresql_without_a_driver(monkeypatch):
+def test_factory_reaches_for_the_postgresql_backend(monkeypatch):
     """
     A postgresql:// DATABASE_URL must not silently fall back to
-    SQLite: the factory raises until the PostgreSQL backend
-    checkpoint lands.
+    SQLite: since P5.3 the factory genuinely attempts the
+    PostgreSQL connection (psycopg installed here), so an
+    unreachable server raises a connection error — never a
+    SQLite file.
     """
 
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql://u:p@localhost:5432/adensa",
+        "postgresql://u:p@localhost:5432/adensa?connect_timeout=1",
     )
 
-    with pytest.raises(NotImplementedError, match="not implemented yet"):
+    with pytest.raises(Exception) as excinfo:
         database.get_connection()
+
+    assert not isinstance(excinfo.value, NotImplementedError)
+
+
+def test_default_connect_timeout_is_applied_without_overriding():
+    """
+    The factory bounds connection attempts with a libpq
+    connect_timeout so a dead PostgreSQL host fails startup in
+    seconds, and an operator-provided timeout wins.
+    """
+
+    from app.database import _with_default_connect_timeout
+
+    bare = _with_default_connect_timeout(
+        "postgresql://u:p@localhost:5432/adensa"
+    )
+
+    assert "connect_timeout=10" in bare
+
+    preserved = _with_default_connect_timeout(
+        "postgresql://u:p@localhost:5432/adensa?connect_timeout=3"
+    )
+
+    assert "connect_timeout=3" in preserved
+    assert "connect_timeout=10" not in preserved
 
 
 # ==================================================
@@ -254,7 +281,11 @@ def test_version_backend_for_sqlite_connection_is_pragma_based():
     connection = sqlite3.connect(":memory:")
 
     try:
-        read_version, write_version = migrations._version_backend(connection)
+        read_version, write_version, transaction_mode = (
+            migrations._version_backend(connection)
+        )
+
+        assert transaction_mode == "explicit"
 
         assert read_version() == 0
 

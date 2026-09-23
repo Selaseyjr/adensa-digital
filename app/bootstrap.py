@@ -1,6 +1,6 @@
 import logging
 
-from app.config import DATABASE_PATH
+from app.config import DATABASE_PATH, get_database_config
 from app.database import get_connection, initialize_database
 from app.generate_data import (
     insert_master_data,
@@ -40,21 +40,36 @@ def database_schema_exists():
     Check whether the Adensa Digital database exists
     and contains all required tables.
     """
-    if not DATABASE_PATH.exists():
+    config = get_database_config()
+
+    if config.is_sqlite and not DATABASE_PATH.exists():
         return False
 
     connection = get_connection()
 
     try:
-        rows = connection.execute(
-            """
-            SELECT name
-            FROM sqlite_master
-            WHERE type = 'table'
-            """
-        ).fetchall()
+        if config.is_sqlite:
+            rows = connection.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                """
+            ).fetchall()
+        else:
+            # PostgreSQL: the portable catalog view replaces
+            # SQLite's sqlite_master; the public schema of the
+            # configured database is the application schema.
+            rows = connection.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_type = 'BASE TABLE'
+                """
+            ).fetchall()
 
-        existing_tables = {row["name"] for row in rows}
+        existing_tables = {row[0] for row in rows}
 
         return REQUIRED_TABLES.issubset(existing_tables)
 

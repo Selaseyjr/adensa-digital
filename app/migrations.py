@@ -18,10 +18,10 @@ The runner is deliberately small and dependency-free:
 - each migration  -> applied inside a transaction, so a failure
                       never falsely advances the recorded version
 
-SQLite stores the applied version in `PRAGMA user_version`; the
+SQLite stores the applied version in `PRAGMA user_version`;
+PostgreSQL stores it in a `schema_migrations` table (P5.3). The
 migration abstraction itself is plain SQL and sequential version
-numbers, so the same history can drive PostgreSQL (where the
-version stamp becomes a `schema_migrations` row) without a second
+numbers, so one history drives both backends without a second
 competing schema-definition system.
 
 Version-state portability (P5.2): the runner speaks to the
@@ -298,14 +298,16 @@ _SCHEMA_VERSION_COMMAND = "PRAGMA user_version = {version}"
 
 
 # ==================================================
-# VERSION-STATE BACKEND SEAM (P5.2)
+# VERSION-STATE BACKEND SEAM (P5.2/P5.3)
 # ==================================================
 #
-# The runner's only backend-specific concern is where the
-# applied version lives. SQLite: PRAGMA user_version.
-# PostgreSQL (future): a schema_migrations table. Selecting
-# by connection dialect keeps one runner and one history for
-# both backends.
+# The runner's only backend-specific concerns are where the
+# applied version lives and how transactions are framed.
+# SQLite: PRAGMA user_version, explicit BEGIN.
+# PostgreSQL: a schema_migrations table; the transaction is
+# opened implicitly by the first statement under autocommit.
+# Selecting by connection type keeps one runner and one
+# history for both backends.
 
 
 def _sqlite_version_backend(connection):
@@ -319,21 +321,58 @@ def _sqlite_version_backend(connection):
             _SCHEMA_VERSION_COMMAND.format(version=version)
         )
 
-    return read_version, write_version
+    return read_version, write_version, "explicit"
+
+
+_POSTGRES_VERSION_TABLE = """
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT NOT NULL
+    )
+"""
+
+
+def _postgresql_version_backend(connection):
+
+    def read_version():
+        connection.execute(_POSTGRES_VERSION_TABLE)
+
+        rows = connection.execute(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
+        ).fetchall()
+
+        return int(rows[0][0]) if rows else 0
+
+    def write_version(version):
+        connection.execute(
+            "INSERT INTO schema_migrations (version, applied_at) "
+            "VALUES (?, ?)",
+            (version, _utcnow_text()),
+        )
+
+    return read_version, write_version, "implicit"
+
+
+def _utcnow_text():
+    """Wall-clock stamp for the migration bookkeeping row."""
+
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 def _version_backend(connection):
     """Resolve the version store for a connection's dialect."""
 
-    module_name = type(connection).__module__ or ""
+    from app.database import PostgresConnectionAdapter
 
-    if "sqlite3" in module_name or type(connection).__name__ == "Connection" and module_name.endswith("sqlite3"):
-        return _sqlite_version_backend(connection)
+    if isinstance(connection, PostgresConnectionAdapter):
+        return _postgresql_version_backend(connection)
 
-    # Unknown/undialectable connections (test doubles): the
-    # runner has only ever been exercised against SQLite, and
-    # the PostgreSQL seam is not implemented yet, so the
-    # historical default is the only honest choice.
+    # sqlite3 connections (and the test doubles that mimic
+    # them) use the historical PRAGMA user_version store.
     return _sqlite_version_backend(connection)
 
 
@@ -344,7 +383,7 @@ def _version_backend(connection):
 def get_schema_version(connection) -> int:
     """Return the schema version recorded for this database."""
 
-    read_version, _ = _version_backend(connection)
+    read_version, _, _ = _version_backend(connection)
     return read_version()
 
 
@@ -366,16 +405,19 @@ def apply_pending_migrations(connection) -> int:
     current = get_schema_version(connection)
     applied = 0
 
-    _, write_version = _version_backend(connection)
+    _, write_version, transaction_mode = _version_backend(connection)
 
     for version, name, statements in MIGRATIONS:
         if version <= current:
             continue
 
         try:
-            connection.execute("BEGIN")
+            if transaction_mode == "explicit":
+                connection.execute("BEGIN")
+
             for statement in statements:
                 connection.execute(statement)
+
             write_version(version)
             connection.commit()
         except Exception:

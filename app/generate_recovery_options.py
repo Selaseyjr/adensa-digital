@@ -485,7 +485,10 @@ def generate_recovery_options(connection):
                     recovery_transit_days,
                     capacity_available,
                     risk_score,
-                    1 if feasible else 0,
+                    # Real boolean: SQLite stores 0/1 exactly
+                    # as before; PostgreSQL requires it for
+                    # the BOOLEAN column (P5.3 type decision).
+                    bool(feasible),
                 )
             )
 

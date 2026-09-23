@@ -105,7 +105,11 @@ def insert_master_data(connection):
     # Suppliers
     # --------------------------------------------------
 
-    cursor.executemany("""
+    # Boolean columns bind real booleans: SQLite stores them
+    # as 0/1 exactly as before; PostgreSQL requires true/false
+    # for its BOOLEAN columns (P5.3 type decision).
+    cursor.executemany(
+        """
         INSERT OR IGNORE INTO suppliers (
             supplier_id,
             supplier_name,
@@ -116,13 +120,28 @@ def insert_master_data(connection):
             active
         )
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, SUPPLIERS)
+    """,
+        [
+            (supplier_id, supplier_name, country, city,
+             reliability_score, average_lead_time_days, bool(active))
+            for (
+                supplier_id,
+                supplier_name,
+                country,
+                city,
+                reliability_score,
+                average_lead_time_days,
+                active,
+            ) in SUPPLIERS
+        ],
+    )
 
     # --------------------------------------------------
     # Products
     # --------------------------------------------------
 
-    cursor.executemany("""
+    cursor.executemany(
+        """
         INSERT OR IGNORE INTO products (
             product_id,
             product_name,
@@ -138,7 +157,38 @@ def insert_master_data(connection):
             active
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, PRODUCTS)
+    """,
+        [
+            (
+                product_id,
+                product_name,
+                category,
+                subcategory,
+                unit_weight_kg,
+                unit_volume_m3,
+                unit_value,
+                supplier_id,
+                lead_time_days,
+                reorder_point,
+                safety_stock,
+                bool(active),
+            )
+            for (
+                product_id,
+                product_name,
+                category,
+                subcategory,
+                unit_weight_kg,
+                unit_volume_m3,
+                unit_value,
+                supplier_id,
+                lead_time_days,
+                reorder_point,
+                safety_stock,
+                active,
+            ) in PRODUCTS
+        ],
+    )
 
     # --------------------------------------------------
     # Warehouses
