@@ -73,12 +73,12 @@ class PostgresConnectionAdapter:
     - result rows are converted to Row objects with the
       sqlite3.Row access contract, so no driver-specific type
       crosses the service boundary;
-    - explicit `BEGIN` statements are dropped: under
-      autocommit, PostgreSQL already starts a transaction on
-      the first data-modifying statement, and psycopg forbids
-      issuing BEGIN manually (the transaction begins
-      implicitly and is terminated by commit()/rollback(),
-      exactly the discipline the engines already follow).
+    - explicit `BEGIN` statements are treated as no-op
+      markers: under psycopg's default transactional mode the
+      transaction begins implicitly with the first statement
+      and is terminated by commit()/rollback() — exactly the
+      discipline the engines already follow, with full
+      multi-statement atomicity;
 
     The adapter holds no state beyond the wrapped connection;
     commit(), rollback() and close() pass through to the
@@ -116,9 +116,9 @@ class _PostgresCursor:
 
     def execute(self, sql, parameters=()):
         if _is_explicit_begin(sql):
-            # A no-op under autocommit (see the adapter
-            # docstring): the transaction begins implicitly
-            # with the first data statement.
+            # A no-op marker (see the adapter docstring): the
+            # transaction begins implicitly with the first
+            # statement and is terminated by commit()/rollback().
             return self
 
         self._cursor.execute(translate_sql(sql), parameters)
@@ -230,13 +230,14 @@ def _connect_postgresql(config):
         config.safe_description(),
     )
 
-    # A PostgreSQL host that never answers must fail startup
-    # quickly instead of hanging for the TCP-stack default
-    # (minutes). The libpq connect_timeout is applied unless the
-    # operator already set one in the URL.
+    # psycopg's default transactional mode is deliberately
+    # kept: the transaction opens implicitly with the first
+    # statement and is terminated by commit()/rollback(), which
+    # is exactly the BEGIN/commit/rollback discipline the
+    # engines already use — multi-statement atomicity survives
+    # the backend switch unchanged.
     connection = psycopg.connect(
         _with_default_connect_timeout(config.url),
-        autocommit=True,
     )
 
     return PostgresConnectionAdapter(connection)
