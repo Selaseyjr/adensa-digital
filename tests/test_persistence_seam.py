@@ -82,6 +82,24 @@ def test_sqlite_url_selects_sqlite_backend_with_explicit_path(
     assert config.sqlite_path == database_file
 
 
+def test_sqlite_url_parses_absolute_posix_path_without_authority_artifact(
+    monkeypatch,
+):
+    """
+    sqlite:////abs/path (four slashes) must resolve to the
+    genuine absolute path /abs/path — never '//abs/path', the
+    empty-authority artifact that breaks Path equality on
+    POSIX. This is the SQLAlchemy sqlite-URL convention.
+    """
+
+    monkeypatch.setenv("DATABASE_URL", "sqlite:////var/lib/adensa/adensa.db")
+
+    config = get_database_config()
+
+    assert config.is_sqlite
+    assert config.sqlite_path.as_posix() == "/var/lib/adensa/adensa.db"
+
+
 def test_postgresql_url_is_represented_without_a_server(monkeypatch):
     """
     A postgresql:// URL resolves to the PostgreSQL backend

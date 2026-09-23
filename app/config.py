@@ -119,14 +119,21 @@ def _parse_sqlite_url(url: str) -> Path:
     """Extract the file path from a sqlite:/// URL."""
 
     # The authority component is always empty for sqlite URLs,
-    # so the path starts right after scheme + "//". One leading
-    # slash separates the empty authority from the path:
-    # strip exactly one; a further leading slash belongs to the
-    # path itself (sqlite:////abs/posix/path).
+    # so the path starts right after scheme + "//". Strip the
+    # single slash that separates the empty authority from the
+    # URL path (the SQLAlchemy sqlite-URL convention):
+    #
+    #   sqlite:///C:/data/adensa.db   -> C:/data/adensa.db
+    #   sqlite:////abs/posix/path     -> /abs/posix/path
+    #   sqlite:///relative/adensa.db  -> relative/adensa.db
+    #
+    # A leading slash on the result therefore means a genuine
+    # POSIX-absolute path — never an empty-authority artifact —
+    # so Path equality holds on every platform.
 
     path = url[len("sqlite://"):]
 
-    if path.startswith("/") and not path.startswith("//"):
+    if path.startswith("/"):
         path = path[1:]
 
     return Path(path)
