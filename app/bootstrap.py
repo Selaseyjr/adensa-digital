@@ -31,6 +31,7 @@ REQUIRED_TABLES = {
     "exceptions",
     "recovery_options",
     "recovery_actions",
+    "manual_interventions",
 }
 
 

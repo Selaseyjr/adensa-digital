@@ -20,3 +20,4 @@ reviewing it for the first time.
 | [ADR-009](009-advisory-ai-decision-support.md) | Advisory AI decision-support layer | Accepted |
 | [ADR-010](010-sustainability-aware-decision-support.md) | Sustainability-aware decision support (informational) | Accepted |
 | [ADR-011](011-versioned-application-boundary.md) | FastAPI as the versioned application boundary | Accepted |
+| [ADR-012](012-database-schema-evolution.md) | Application-managed database schema evolution | Accepted |

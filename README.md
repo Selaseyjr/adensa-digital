@@ -60,7 +60,7 @@ flowchart TD
 | Application services | Orchestration, application-level projections (control tower, operational history), transaction boundaries for service-owned operations, typed error translation. |
 | Business engines | Domain rules: detection, option generation, decision scoring, workflow transitions, execution, simulation. |
 | Repositories | All SQL and data access. Read/write functions per aggregate; no business logic. |
-| Database | SQLite with foreign-key enforcement; schema created idempotently by the production initializer. |
+| Database | SQLite with foreign-key enforcement; schema evolved through the application-managed migration history (ADR-012), verified at readiness. |
 
 Workflow state is a small explicit state machine on recovery actions: `Pending Approval → Approved → Executed`, plus `Rejected` as a terminal alternative. Domain failures are typed (`RecoveryWorkflowError` and subtypes) and mapped to HTTP 409/404 at the API boundary.
 
@@ -184,7 +184,8 @@ app/
   services.py               # Application service layer (the application boundary)
   errors.py                 # Typed domain errors
   bootstrap.py              # Environment initialization (idempotent)
-  database.py               # Connection factory and schema DDL
+  database.py               # Connection factory; delegates schema to migrations
+  migrations.py             # Ordered migration history and runner (ADR-012)
   config.py                 # Configuration (paths, API key)
   detect_exceptions.py      # Exception detection engine
   generate_recovery_options.py  # Recovery-option evaluation engine

@@ -43,6 +43,7 @@ from pydantic import BaseModel, Field
 from app import services
 from app.config import ADENSA_API_KEY, ADENSA_CORS_ORIGINS
 from app.database import get_connection
+from app.migrations import CURRENT_VERSION, get_schema_version
 from app.errors import (
     ActionNotFoundError,
     InvalidTransitionError,
@@ -564,12 +565,23 @@ def read_ready(
 ):
     """
     Readiness: the application can open and use the
-    configured database. Deliberately minimal — a SELECT
-    that touches no operational table and no internals in
-    the response.
+    configured database, and the schema is at the current
+    migration version — an outdated schema fails readiness
+    instead of surfacing as runtime errors (ADR-012).
+    Deliberately minimal — a SELECT that touches no
+    operational table and no internals in the response.
     """
 
     connection.execute("SELECT 1").fetchone()
+
+    if get_schema_version(connection) < CURRENT_VERSION:
+        return JSONResponse(
+            status_code=503,
+            content=ReadyResponse(
+                status="degraded",
+                database="schema-outdated",
+            ).model_dump(),
+        )
 
     return ReadyResponse(
         status="ready",

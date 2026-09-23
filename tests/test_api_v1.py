@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from app.api import app
 from app.config import ADENSA_CORS_ORIGINS
 from app.generate_recovery_options import generate_recovery_options
+from app.migrations import CURRENT_VERSION
 from app.workflow_engine import generate_workflow_actions
 
 from tests.test_api import (
@@ -84,6 +85,32 @@ def test_ready_verifies_database_reachability(api_client):
         "status": "ready",
         "database": "ok",
     }
+
+
+def test_ready_fails_against_outdated_schema(seeded_database, monkeypatch):
+    """
+    A schema-current database minus a later migration's table
+    (the P3.1 drift state: canonical DDL present, version stamp
+    absent) must fail readiness as degraded — the API cannot
+    silently operate against a known stale schema (ADR-012).
+    """
+
+    connection = seeded_database
+    connection.execute("PRAGMA user_version = 0")
+    connection.commit()
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/ready")
+
+            assert response.status_code == 503
+            assert response.json() == {
+                "status": "degraded",
+                "database": "schema-outdated",
+            }
+    finally:
+        connection.execute(f"PRAGMA user_version = {CURRENT_VERSION}")
+        connection.commit()
 
 
 # ==================================================
