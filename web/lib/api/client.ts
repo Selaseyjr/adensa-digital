@@ -24,6 +24,7 @@
 import type {
   ApiErrorBody,
   ControlTowerSummary,
+  DecisionBrief,
   ExceptionContext,
   HistoryEntry,
   InboxRow,
@@ -64,6 +65,7 @@ const EXCEPTION_ASSESSMENT_PATH = "/v1/exceptions/{id}/assessment";
 const EXCEPTION_HISTORY_PATH = "/v1/exceptions/{id}/history";
 const EXCEPTION_SUSTAINABILITY_PATH = "/v1/exceptions/{id}/sustainability";
 const EXCEPTION_INTERVENTIONS_PATH = "/v1/exceptions/{id}/interventions";
+const EXCEPTION_DECISION_BRIEF_PATH = "/v1/exceptions/{id}/decision-brief";
 
 function exceptionPath(template: string, exceptionId: string): string {
   return template.replace("{id}", encodeURIComponent(exceptionId));
@@ -473,6 +475,59 @@ export function getSustainabilityAssessment(
   return getFromApi(
     exceptionPath(EXCEPTION_SUSTAINABILITY_PATH, exceptionId),
     isSustainabilityPayload,
+  );
+}
+
+function isDecisionBrief(body: unknown): DecisionBrief | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+
+  const candidate = body as Record<string, unknown>;
+
+  if (typeof candidate.status !== "string") {
+    return null;
+  }
+
+  // The structured unavailable state: status + message only.
+  if (
+    candidate.situation_summary === undefined &&
+    typeof candidate.message === "string"
+  ) {
+    return body as DecisionBrief;
+  }
+
+  const strings = [
+    "advisory_label",
+    "situation_summary",
+    "recommended_action",
+    "rationale",
+    "tradeoffs",
+    "disclaimer",
+    "provider",
+  ];
+
+  return strings.every((key) => typeof candidate[key] === "string") &&
+    Array.isArray(candidate.verification_points) &&
+    candidate.verification_points.every(
+      (point) => typeof point === "string",
+    )
+    ? (body as DecisionBrief)
+    : null;
+}
+
+/**
+ * GET /v1/exceptions/{id}/decision-brief — the advisory AI
+ * decision brief, or the structured unavailable state when the
+ * advisory layer has nothing to present. Advisory only: never
+ * the operational authority.
+ */
+export function getDecisionBrief(
+  exceptionId: string,
+): Promise<ApiResult<DecisionBrief>> {
+  return getFromApi(
+    exceptionPath(EXCEPTION_DECISION_BRIEF_PATH, exceptionId),
+    isDecisionBrief,
   );
 }
 

@@ -499,8 +499,34 @@ a {
   margin: 10px 0 14px;
 }
 
-.ai-advisory-pending {
+.ai-advisory {
   border-style: dashed;
+}
+
+.ai-advisory-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.advisory-text {
+  font-size: 13.5px;
+  margin-bottom: 10px;
+  max-width: 85ch;
+}
+
+.advisory-disclaimer {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 12px;
+}
+
+.advisory-provider {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 @media (max-width: 720px) {

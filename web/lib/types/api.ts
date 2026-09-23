@@ -263,6 +263,26 @@ export interface ManualInterventionRecord {
   recorded_at: string;
 }
 
+/**
+ * The advisory AI decision brief exactly as the ai_support
+ * contract produces it — never the operational authority.
+ * The available state carries the planner-facing brief; the
+ * structured unavailable state carries only `status` and
+ * `message`.
+ */
+export interface DecisionBrief {
+  status: string;
+  advisory_label: string | null;
+  situation_summary: string | null;
+  recommended_action: string | null;
+  rationale: string | null;
+  tradeoffs: string | null;
+  verification_points: string[] | null;
+  disclaimer: string | null;
+  provider: string | null;
+  message: string | null;
+}
+
 // ==================================================
 // ERROR CONTRACT
 // ==================================================

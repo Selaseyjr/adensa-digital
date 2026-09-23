@@ -55,7 +55,7 @@ API. The frontend adds presentation only.
 |---|---|---|
 | `/` — Control Tower | Implemented | `GET /v1/control-tower/summary` |
 | `/exceptions` — Inbox work queue | Implemented | `GET /v1/exceptions/inbox` |
-| `/exceptions/[id]` — Investigation Workspace | Implemented | `/v1/exceptions/{id}/context`, `/state`, `/assessment`, `/history`, `/sustainability`, `/interventions` |
+| `/exceptions/[id]` — Investigation Workspace | Implemented | `/v1/exceptions/{id}/context`, `/state`, `/assessment`, `/history`, `/sustainability`, `/interventions`, `/decision-brief` |
 | `/operations` | Placeholder | future operational refresh/simulation UI |
 | `/administration` | Placeholder | future configuration UI |
 
@@ -74,11 +74,12 @@ empty panel. The decision support renders the deterministic assessment
 verbatim — recommendation, alternatives, evaluated (infeasible) options,
 factor scores, weights, weighted contributions, trade-offs, confidence —
 with no client-side recalculation. Sustainability stays subordinate and
-prototype-framed. The AI Advisory section is currently an explicit
-pending placeholder: the decision brief exists in the backend
-(`app/ai_support.py`) but is not yet exposed through `/v1` (reported in
-`docs/p4-ai-advisory-api-gap.md`); the deterministic recommendation
-remains the authoritative decision support.
+prototype-framed. The AI Advisory section consumes the advisory decision
+brief from `GET /v1/exceptions/{id}/decision-brief` and is explicitly
+subordinate to the deterministic recommendation: it renders the
+backend's advisory label, disclaimer and verification points verbatim,
+and degrades to an honest unavailable state without affecting the rest
+of the workspace.
 
 ## Configuration
 

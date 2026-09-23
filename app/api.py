@@ -418,6 +418,29 @@ class SustainabilityUnavailable(BaseModel):
     reason: str
 
 
+class DecisionBrief(BaseModel):
+    """
+    The advisory AI decision brief exactly as the ai_support
+    contract produces it — never the operational authority.
+
+    The available state carries the planner-facing brief; the
+    structured unavailable state carries only `status` and
+    `message`. Optional fields keep both states in one honest
+    contract instead of inventing placeholder content.
+    """
+
+    status: str
+    advisory_label: str | None = None
+    situation_summary: str | None = None
+    recommended_action: str | None = None
+    rationale: str | None = None
+    tradeoffs: str | None = None
+    verification_points: list[str] | None = None
+    disclaimer: str | None = None
+    provider: str | None = None
+    message: str | None = None
+
+
 class LatestAction(BaseModel):
     """The most recent recovery action and its workflow state."""
 
@@ -871,6 +894,47 @@ def read_manual_interventions_v1(
         )
 
     return services.get_manual_interventions(
+        connection,
+        exception_id,
+    )
+
+
+@app.get(
+    "/v1/exceptions/{exception_id}/decision-brief",
+    response_model=DecisionBrief,
+)
+def read_decision_brief_v1(
+    exception_id: str,
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """
+    The advisory AI decision brief for one exception.
+
+    Advisory layer only: it interprets evidence the
+    deterministic decision engine has already established and
+    is never the operational authority. The provider runs
+    inside the existing ai_support boundary — no external
+    model is contacted, the brief is never persisted, and no
+    workflow or database state can change.
+
+    A missing exception is 404 (distinguishing not-found from
+    the structured unavailable advisory state), mirroring the
+    sustainability and interventions endpoints.
+    """
+
+    exception = services.get_exception_context(
+        connection,
+        exception_id,
+    )
+
+    if exception is None:
+
+        _not_found(
+            f"Exception {exception_id} not found."
+        )
+
+    return services.get_decision_brief(
         connection,
         exception_id,
     )

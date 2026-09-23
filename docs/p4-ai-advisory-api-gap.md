@@ -1,46 +1,31 @@
-# P4 API gap — AI advisory decision brief is not exposed via /v1
+# P4 API gap — AI advisory decision brief
 
 ## Status
 
-Reported during Checkpoint P4 — not worked around, not implemented ad hoc.
+**Resolved** in Checkpoint P4.x.
 
-## Gap
+The gap identified during P4 — the advisory AI decision brief existed in
+the backend (`app/ai_support.py`, exposed to planners only through the
+Streamlit client) while the `/v1` application boundary had no route for
+it — is closed.
 
-```text
-Existing endpoint:      (none) — the /v1 boundary has no AI-advisory route
-Required information:   the advisory AI decision brief that app/ai_support.py
-                        already produces for an exception (situation summary,
-                        recommendation explanation, trade-offs, verification
-                        points)
-Why insufficient:       Checkpoint U's advisory AI layer is reachable only
-                        from the Streamlit client through app/services.py /
-                        app/main.py; ADR-011 established /v1 as the versioned
-                        application boundary, so the Next.js client cannot
-                        obtain the brief without bypassing that boundary.
-Why not worked around:  the P4 checkpoint forbids ad-hoc frontend
-                        implementations of unexposed backend capabilities and
-                        forbids new endpoints in this checkpoint; a capability
-                        must cross the boundary through a contract, not a
-                        side door.
-Smallest backend change required: one protected read endpoint
-                        GET /v1/exceptions/{exception_id}/decision-brief
-                        with an explicit Pydantic response model mirroring
-                        the existing structured ai_support.py output,
-                        following the ADR-011 response-contract pattern;
-                        advisory-only framing (non-authoritative, never the
-                        system of record) documented in the ADR that
-                        introduces it.
-```
+## Resolution
 
-## Interim P4 behavior
+`GET /v1/exceptions/{exception_id}/decision-brief` (P4.x) exposes the
+existing advisory capability through the versioned boundary:
 
-The workspace renders the AI Advisory section as an explicitly pending
-section: advisory briefs are not yet available through the API boundary,
-and the deterministic recommendation remains the authoritative decision
-support. No fabricated advisory content is displayed.
+- backed by `services.get_decision_brief` and the existing ai_support
+  provider/validation contract — no second AI implementation;
+- the deterministic decision engine remains the sole operational
+  authority; the brief is advisory interpretation only;
+- a missing exception is 404, distinguished from the structured
+  unavailable advisory state (mirrors sustainability/interventions);
+- explicit Pydantic response model (`DecisionBrief`); no internal
+  objects, credentials or configuration cross the boundary;
+- the brief is never persisted and no workflow or database state can
+  change (pinned by `test_v1_decision_brief_does_not_mutate_workflow_or_database`).
 
-## Future checkpoint
-
-Expose `/v1/exceptions/{exception_id}/decision-brief` (P2-style response
-contract + tests), then render the real brief in the workspace's AI
-Advisory section, subordinate to the deterministic recommendation.
+The Next.js Investigation Workspace consumes the endpoint through the
+typed API client (`web/lib/api/client.ts`); the P4 pending placeholder
+was replaced by the real advisory section, which keeps its own failure
+states without affecting the rest of the workspace.

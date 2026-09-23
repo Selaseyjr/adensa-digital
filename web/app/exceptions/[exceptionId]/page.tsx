@@ -16,11 +16,11 @@
  * collapses the workspace; every other section degrades to
  * its own honest failure panel.
  *
- * Known API gap (reported, not worked around): the advisory
- * AI decision brief exists in the backend (app/ai_support.py)
- * but the /v1 boundary does not expose it. No ad-hoc
- * frontend substitute is rendered; see
- * docs/p4-ai-advisory-api-gap.md.
+ * The AI advisory consumes GET
+ * /v1/exceptions/{id}/decision-brief (P4.x): the advisory
+ * layer is subordinate to the deterministic recommendation
+ * and renders its own honest failure states without
+ * affecting the rest of the workspace.
  */
 
 import Link from "next/link";
@@ -31,6 +31,7 @@ import {
   getExceptionHistory,
   getSustainabilityAssessment,
   getManualInterventions,
+  getDecisionBrief,
 } from "@/lib/api/client";
 import type { ApiResult } from "@/lib/api/client";
 import {
@@ -44,6 +45,7 @@ import { DecisionSupport } from "@/components/investigation/DecisionSupport";
 import { OperationalHistory } from "@/components/investigation/OperationalHistory";
 import { SustainabilitySection } from "@/components/investigation/SustainabilitySection";
 import { WorkflowAction } from "@/components/investigation/WorkflowAction";
+import { AiDecisionBrief } from "@/components/investigation/AiDecisionBrief";
 
 export type WorkspaceData = {
   state: Awaited<ReturnType<typeof getInvestigationState>>;
@@ -52,6 +54,7 @@ export type WorkspaceData = {
   history: Awaited<ReturnType<typeof getExceptionHistory>>;
   sustainability: Awaited<ReturnType<typeof getSustainabilityAssessment>>;
   interventions: Awaited<ReturnType<typeof getManualInterventions>>;
+  brief: Awaited<ReturnType<typeof getDecisionBrief>>;
 };
 
 export async function loadInvestigationData(
@@ -64,6 +67,7 @@ export async function loadInvestigationData(
     history: await getExceptionHistory(exceptionId),
     sustainability: await getSustainabilityAssessment(exceptionId),
     interventions: await getManualInterventions(exceptionId),
+    brief: await getDecisionBrief(exceptionId),
   };
 }
 
@@ -185,14 +189,23 @@ async function InvestigationWorkspace({
         />
       )}
 
-      <aside className="section ai-advisory-pending" aria-label="AI advisory">
-        <h3 className="section-title">AI Advisory</h3>
-        <p className="section-caption">
-          Advisory decision briefs are not yet exposed through the versioned
-          API boundary. The deterministic recommendation above remains the
-          authoritative decision support.
-        </p>
-      </aside>
+      {data.brief.kind === "data" ? (
+        <AiDecisionBrief brief={data.brief.data} />
+      ) : data.brief.kind === "empty" ? (
+        <aside className="section ai-advisory" aria-label="AI advisory">
+          <h3 className="section-title">AI Advisory</h3>
+          <p className="section-caption">
+            No advisory brief is available for this exception. The
+            deterministic recommendation above remains the authoritative
+            decision support.
+          </p>
+        </aside>
+      ) : (
+        <OptionalSectionFallback
+          result={data.brief}
+          section="AI advisory"
+        />
+      )}
 
       {data.interventions.kind === "data" || data.interventions.kind === "empty" ? (
         <WorkflowAction

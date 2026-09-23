@@ -16,12 +16,14 @@ import {
   createApiServer,
   makeAssessment,
   makeContext,
+  makeDecisionBrief,
   makeHistoryEntry,
   makeInvestigationState,
   makeManualIntervention,
   makeSustainabilityComparison,
   assessmentPath,
   contextPath,
+  decisionBriefPath,
   historyPath,
   http,
   HttpResponse,
@@ -31,6 +33,7 @@ import { SituationImpact } from "@/components/investigation/SituationImpact";
 import { DecisionSupport } from "@/components/investigation/DecisionSupport";
 import { OperationalHistory } from "@/components/investigation/OperationalHistory";
 import { SustainabilitySection } from "@/components/investigation/SustainabilitySection";
+import { AiDecisionBrief } from "@/components/investigation/AiDecisionBrief";
 import { WorkflowAction } from "@/components/investigation/WorkflowAction";
 import {
   getExceptionContext,
@@ -39,6 +42,7 @@ import {
   getExceptionHistory,
   getSustainabilityAssessment,
   getManualInterventions,
+  getDecisionBrief,
 } from "@/lib/api/client";
 
 const server = createApiServer();
@@ -260,6 +264,96 @@ describe("sustainability", () => {
   });
 });
 
+describe("AI advisory", () => {
+  it("renders the advisory brief subordinate to the deterministic decision", () => {
+    render(<AiDecisionBrief brief={makeDecisionBrief()} />);
+
+    expect(screen.getByText("AI Advisory")).toBeInTheDocument();
+    expect(
+      screen.getByText("AI-assisted · Advisory only"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Supporting interpretation of the deterministic assessment/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Situation")).toBeInTheDocument();
+    expect(screen.getByText("Recommended action")).toBeInTheDocument();
+    expect(screen.getByText("Rationale")).toBeInTheDocument();
+    expect(screen.getByText("Trade-offs")).toBeInTheDocument();
+    expect(screen.getByText("Verify before acting")).toBeInTheDocument();
+  });
+
+  it("presents the provider and disclaimer framing verbatim", () => {
+    render(<AiDecisionBrief brief={makeDecisionBrief()} />);
+
+    expect(
+      screen.getByText(/AI-assisted summary of Adensa's deterministic/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Advisory provider: adensa-evidence-brief/v1"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the structured unavailable state honestly", () => {
+    render(
+      <AiDecisionBrief
+        brief={makeDecisionBrief({
+          status: "unavailable",
+          message:
+            "AI decision brief unavailable. Deterministic recommendation remains available.",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Deterministic recommendation remains available/),
+    ).toBeInTheDocument();
+    // No advisory content is fabricated when unavailable.
+    expect(screen.queryByText("Recommended action")).not.toBeInTheDocument();
+  });
+
+  it("keeps advisory content clearly separate from the deterministic recommendation", () => {
+    // The advisory section is labelled as interpretation; the
+    // deterministic Decision Support section carries no
+    // advisory label — the two never share presentation.
+    render(<AiDecisionBrief brief={makeDecisionBrief()} />);
+
+    const advisory = screen.getByLabelText("AI advisory");
+
+    expect(
+      within(advisory).getByText("AI-assisted · Advisory only"),
+    ).toBeInTheDocument();
+    expect(
+      within(advisory).getByText(/never the operational decision/),
+    ).toBeInTheDocument();
+  });
+
+  it("maps the decision-brief endpoint failures without collapsing the workspace loader", async () => {
+    server.use(
+      http.get(decisionBriefPath(), () =>
+        HttpResponse.json({ detail: "boom" }, { status: 503 }),
+      ),
+    );
+
+    const brief = await getDecisionBrief("EXC-001529");
+
+    expect(brief.kind).toBe("unavailable");
+  });
+
+  it("validates the decision-brief contract structurally", async () => {
+    server.use(
+      http.get(decisionBriefPath(), () =>
+        HttpResponse.json({ status: "available" }), // missing brief fields
+      ),
+    );
+
+    const brief = await getDecisionBrief("EXC-001529");
+
+    expect(brief.kind).toBe("unexpected");
+  });
+});
+
 describe("workflow action", () => {
   it("renders the state, reason and next step without inventing states", () => {
     render(
@@ -312,7 +406,7 @@ describe("workflow action", () => {
 });
 
 describe("workspace data loading over the API boundary", () => {
-  it("loads all six sections through the typed client", async () => {
+  it("loads all workspace sections through the typed client", async () => {
     const [
       context,
       state,
@@ -320,6 +414,7 @@ describe("workspace data loading over the API boundary", () => {
       history,
       sustainability,
       interventions,
+      brief,
     ] = await Promise.all([
       getExceptionContext("EXC-001529"),
       getInvestigationState("EXC-001529"),
@@ -327,6 +422,7 @@ describe("workspace data loading over the API boundary", () => {
       getExceptionHistory("EXC-001529"),
       getSustainabilityAssessment("EXC-001529"),
       getManualInterventions("EXC-001529"),
+      getDecisionBrief("EXC-001529"),
     ]);
 
     expect(context.kind).toBe("data");
@@ -335,6 +431,7 @@ describe("workspace data loading over the API boundary", () => {
     expect(history.kind).toBe("data");
     expect(sustainability.kind).toBe("data");
     expect(interventions.kind).toBe("data");
+    expect(brief.kind).toBe("data");
   });
 
   it("maps an unknown exception to the empty state on context", async () => {

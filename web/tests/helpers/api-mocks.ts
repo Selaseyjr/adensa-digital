@@ -8,6 +8,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import type {
   ControlTowerSummary,
+  DecisionBrief,
   ExceptionContext,
   HistoryEntry,
   InboxRow,
@@ -40,6 +41,8 @@ export const sustainabilityPath = (id?: string) =>
   exceptionApiPath("sustainability", id);
 export const interventionsPath = (id?: string) =>
   exceptionApiPath("interventions", id);
+export const decisionBriefPath = (id?: string) =>
+  exceptionApiPath("decision-brief", id);
 
 export function makeInboxRow(overrides: Partial<InboxRow> = {}): InboxRow {
   return {
@@ -268,6 +271,31 @@ export function makeSustainabilityComparison(
   };
 }
 
+export function makeDecisionBrief(
+  overrides: Partial<DecisionBrief> = {},
+): DecisionBrief {
+  return {
+    status: "available",
+    advisory_label: "AI-assisted · Advisory only",
+    situation_summary:
+      "Shipment Delay (High severity) on shipment SHP-SIM-0002 for Meridian Foods.",
+    recommended_action:
+      "Adensa recommends Road via CAR-002 (option OPT-0001): decision score 0.78, confidence High.",
+    rationale:
+      "Policy weights favour this option (cost 30%, transit 30%, risk 25%, priority 15%): cost fit 80 contributing 0.24.",
+    tradeoffs:
+      "Air (OPT-0002) scores higher on transit — the recommendation still wins on the weighted overall score.",
+    verification_points: [
+      "Confirm the revised delivery plan — estimated arrival remains later than required.",
+    ],
+    disclaimer:
+      "AI-assisted summary of Adensa's deterministic assessment. Advisory only: it does not approve, execute, or resolve anything — the planner decides.",
+    provider: "adensa-evidence-brief/v1",
+    message: null,
+    ...overrides,
+  };
+}
+
 export function makeManualIntervention(
   overrides: Partial<ManualInterventionRecord> = {},
 ): ManualInterventionRecord {
@@ -303,6 +331,9 @@ export function createApiServer() {
     ),
     http.get(interventionsPath(), () =>
       HttpResponse.json([makeManualIntervention()]),
+    ),
+    http.get(decisionBriefPath(), () =>
+      HttpResponse.json(makeDecisionBrief()),
     ),
   );
 }

@@ -18,6 +18,7 @@ from app.api import app
 from app.config import ADENSA_CORS_ORIGINS
 from app.generate_recovery_options import generate_recovery_options
 from app.migrations import CURRENT_VERSION
+from app.services import get_latest_action as services_get_latest_action
 from app.workflow_engine import generate_workflow_actions
 
 from tests.test_api import (
@@ -853,3 +854,227 @@ def test_cors_configuration_defaults_to_no_origins():
     """
 
     assert ADENSA_CORS_ORIGINS == []
+
+
+# ==================================================
+# DECISION BRIEF (ADVISORY AI, P4.x)
+# ==================================================
+
+def test_v1_decision_brief_returns_advisory_contract(api_client):
+    """
+    The advisory AI decision brief for a recommended exception
+    is available, carries the advisory label and disclaimer,
+    and is grounded in the deterministic assessment.
+    """
+
+    client, connection = api_client
+
+    _generate_options_and_action(connection)
+
+    response = client.get("/v1/exceptions/EXC-900002/decision-brief")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["status"] == "available"
+    assert body["advisory_label"] == "AI-assisted · Advisory only"
+    assert body["provider"] == "adensa-evidence-brief/v1"
+    assert body["situation_summary"].strip()
+    assert body["recommended_action"].strip()
+    assert body["rationale"].strip()
+    assert body["tradeoffs"].strip()
+    assert isinstance(body["verification_points"], list)
+    assert body["disclaimer"].strip()
+
+    # Grounded in the requested exception's own evidence: the
+    # brief names the assessed option of EXC-900002, and no
+    # identifier outside this exception's evidence appears.
+    assert "OPT-" in body["recommended_action"]
+
+    from app.ai_support import IDENTIFIER_PATTERN
+
+    for identifier in IDENTIFIER_PATTERN.findall(
+        " ".join(
+            [
+                body["situation_summary"],
+                body["recommended_action"],
+                body["rationale"],
+                body["tradeoffs"],
+            ]
+        )
+    ):
+        assert identifier.startswith(
+            ("EXC-900002", "SHP-900002", "ORD-900002")
+        ) or identifier.startswith(("OPT-", "CAR-", "ACT-"))
+
+
+def test_v1_decision_brief_is_scoped_to_the_requested_exception(api_client):
+    """
+    The brief can only describe the requested exception: two
+    different exceptions produce different briefs, each
+    grounded in its own identifiers.
+    """
+
+    client, connection = api_client
+
+    _generate_options_and_action(connection)
+
+    brief_900002 = client.get(
+        "/v1/exceptions/EXC-900002/decision-brief"
+    ).json()
+
+    response_900001 = client.get(
+        "/v1/exceptions/EXC-900001/decision-brief"
+    )
+
+    assert response_900001.status_code == 200
+
+    brief_900001 = response_900001.json()
+
+    # EXC-900001 is seeded on-time with no generated recovery
+    # options: no deterministic recommendation exists, so the
+    # honest answer is the structured unavailable state.
+    assert brief_900001["status"] == "unavailable"
+    assert "EXC-900001" not in str(brief_900001.get(
+        "situation_summary"
+    ))
+
+    # EXC-900002's own brief names its own exception facts
+    # (the summariser cites the shipment, type and severity).
+    assert "SHP-900002" in brief_900002["situation_summary"]
+    assert "SHP-900001" not in brief_900002["situation_summary"]
+
+
+def test_v1_decision_brief_missing_exception_returns_404(api_client):
+    """
+    A nonexistent exception cannot produce a brief: 404,
+    distinguishing not-found from the advisory unavailable
+    state (mirrors sustainability/interventions).
+    """
+
+    client, _ = api_client
+
+    response = client.get("/v1/exceptions/EXC-DOES-NOT-EXIST/decision-brief")
+
+    assert response.status_code == 404
+    assert "EXC-DOES-NOT-EXIST" in response.json()["detail"]
+
+
+def test_v1_decision_brief_fabricated_content_is_rejected(
+    api_client,
+    monkeypatch,
+):
+    """
+    Advisory content that invents an operational identifier or
+    claims an executed action is rejected by the existing
+    validation and degrades to the structured unavailable
+    state — the boundary never serves unverified text.
+    """
+
+    from app.ai_support import (
+        ADVISORY_DISCLAIMER,
+        AiProviderError,
+    )
+    from app import services
+
+    client, connection = api_client
+
+    _generate_options_and_action(connection)
+
+    def _fabricating_provider(evidence):
+        return {
+            "situation_summary": "Situation summary.",
+            "recommended_action": (
+                "Consider alternative OPT-999999 which fits better."
+            ),
+            "rationale": "Grounded explanation.",
+            "tradeoffs": "Factual statement.",
+            "verification_points": [],
+            "disclaimer": ADVISORY_DISCLAIMER,
+            "provider": "fabricating-provider",
+        }
+
+    monkeypatch.setattr(
+        services,
+        "DEFAULT_PROVIDER",
+        _fabricating_provider,
+    )
+
+    response = client.get("/v1/exceptions/EXC-900002/decision-brief")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["status"] == "unavailable"
+    assert "OPT-999999" in body["message"]
+
+    # A provider outage degrades the same way — never a 500.
+    def _failing_provider(evidence):
+        raise AiProviderError("provider unreachable")
+
+    monkeypatch.setattr(
+        services,
+        "DEFAULT_PROVIDER",
+        _failing_provider,
+    )
+
+    response = client.get("/v1/exceptions/EXC-900002/decision-brief")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "unavailable"
+    assert "provider unreachable" in response.json()["message"]
+
+
+def test_v1_decision_brief_does_not_mutate_workflow_or_database(api_client):
+    """
+    Requesting a brief is a pure read: the recovery action's
+    workflow state, the operational tables and the exception's
+    lifecycle are byte-identical before and after.
+    """
+
+    client, connection = api_client
+
+    _generate_options_and_action(connection)
+
+    action = services_get_latest_action(connection, "EXC-900002")
+
+    def _operational_snapshot(connection):
+
+        tables = (
+            "exceptions",
+            "recovery_options",
+            "recovery_actions",
+            "shipment_events",
+        )
+
+        return {
+            table: connection.execute(
+                f"SELECT COUNT(*) FROM {table}"
+            ).fetchone()[0]
+            for table in tables
+        }
+
+    before_counts = _operational_snapshot(connection)
+    before_status = action["status"]
+
+    response = client.get("/v1/exceptions/EXC-900002/decision-brief")
+
+    assert response.status_code == 200
+
+    after_action = services_get_latest_action(
+        connection,
+        "EXC-900002",
+    )
+
+    assert after_action["status"] == before_status
+    assert _operational_snapshot(connection) == before_counts
+
+    # The brief is not persisted anywhere.
+    briefs_table = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name LIKE '%brief%'"
+    ).fetchall()
+
+    assert briefs_table == []
