@@ -121,7 +121,15 @@ class _PostgresCursor:
             # statement and is terminated by commit()/rollback().
             return self
 
-        self._cursor.execute(translate_sql(sql), parameters)
+        # No parameters means no interpolation: psycopg must
+        # receive None (not an empty tuple) so it does not scan
+        # the statement for placeholders — parameterless SQL may
+        # legitimately contain literal '%' (e.g. LIKE 'EXC-%'
+        # ID-pattern queries).
+        self._cursor.execute(
+            translate_sql(sql),
+            parameters if parameters else None,
+        )
 
         return self
 

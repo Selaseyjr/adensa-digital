@@ -137,14 +137,13 @@ def test_credentials_are_not_logged(postgres_database, caplog):
 
     import logging
 
-    logging.getLogger().setLevel(logging.INFO)
+    with caplog.at_level(logging.INFO):
+        connection = postgres_database.get_connection()
 
-    connection = postgres_database.get_connection()
-
-    try:
-        pass
-    finally:
-        connection.close()
+        try:
+            pass
+        finally:
+            connection.close()
 
     for record in caplog.records:
         assert "test_password" not in record.getMessage()
@@ -233,33 +232,39 @@ def test_fresh_database_reaches_current_version(postgres_database):
         connection.close()
 
 
-def test_current_database_is_a_noop(postgres_database, monkeypatch):
+def test_current_database_is_a_noop(postgres_database, caplog):
     """A schema-current PostgreSQL database performs no work."""
 
-    import app.database as database_module
-    from app import migrations
+    import logging
+
+    from app.migrations import CURRENT_VERSION, get_schema_version
 
     postgres_database.initialize_database()
 
-    calls = []
+    # Discard the first start's records: only the second,
+    # schema-current start is under observation.
+    caplog.clear()
 
-    def _tracking_apply(connection):
-        calls.append(connection)
+    # Second start against the now-current database: the runner
+    # must apply nothing (no "Migration ... applied" events) and
+    # the recorded version must remain the current one.
+    with caplog.at_level(logging.INFO, logger="app.migrations"):
+        postgres_database.initialize_database()
 
-        return migrations.get_schema_version(connection)
+    applied_events = [
+        record
+        for record in caplog.records
+        if record.name == "app.migrations" and "Migration" in record.getMessage()
+    ]
 
-    # initialize_database resolves apply_pending_migrations from
-    # the app.database module namespace at call time, so the
-    # tracking substitute must be bound there.
-    monkeypatch.setattr(
-        database_module,
-        "apply_pending_migrations",
-        _tracking_apply,
-    )
+    assert applied_events == []
 
-    postgres_database.initialize_database()
+    connection = postgres_database.get_connection()
 
-    assert calls == []
+    try:
+        assert get_schema_version(connection) == CURRENT_VERSION
+    finally:
+        connection.close()
 
 
 def test_foreign_keys_are_enforced(postgres_database):
@@ -367,12 +372,12 @@ def test_multi_statement_transaction_rolls_back_atomically(
 
     postgres_database.initialize_database()
 
-    from tests.conftest import seed_master_data, seed_minimal_supply_chain
+    from tests.conftest import seed_minimal_supply_chain
 
     connection = postgres_database.get_connection()
 
     try:
-        seed_master_data(connection)
+        seed_minimal_supply_chain(connection)
         connection.commit()
 
         # Two-table unit of work: a shipment event plus a
