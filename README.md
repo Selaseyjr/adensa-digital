@@ -114,6 +114,7 @@ The FastAPI boundary (`app/api.py`) exposes the service layer over HTTP. All ope
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/v1/control-tower/summary` | Control-tower projection: bounded-queue and full-population metrics, follow-up and resolved queues |
+| GET | `/v1/analytics/overview` | Read-only analytical overview: service performance, shipment volume, departure-month exception incidence, transport/carrier/warehouse breakdowns, severity snapshot (ADR-014) |
 | GET | `/v1/exceptions/inbox` | The operational work queue (actionable first, then newest detected) |
 | GET | `/v1/exceptions/{exception_id}/context` | Investigation context (Situation & Impact) |
 | GET | `/v1/exceptions/{exception_id}/state` | Persisted-evidence investigation state |

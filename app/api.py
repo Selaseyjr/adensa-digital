@@ -316,6 +316,121 @@ class ControlTowerSummary(BaseModel):
     recently_resolved: list[ControlTowerRecentlyResolved]
 
 
+# --------------------------------------------------
+# ANALYTICS CONTRACTS (ADR-014)
+#
+# Read-only analytical projections for the control-tower
+# visualization layer. Every dataset carries its analytical
+# basis as contract metadata: the frontend labels each
+# series truthfully ("Delivered shipments by planned-arrival
+# month", "Exceptions by shipment departure month") instead
+# of hiding the assumptions in component copy.
+# --------------------------------------------------
+
+class AnalyticsServicePerformancePoint(BaseModel):
+    """One month of delivered-shipment on-time performance."""
+
+    month: str
+    delivered: int
+    on_time: int
+    on_time_rate: float | None
+
+
+class AnalyticsIncidencePoint(BaseModel):
+    """One departure month's exception incidence (not detection time)."""
+
+    month: str
+    departing: int
+    exceptions: int
+    incidence_rate: float | None
+
+
+class AnalyticsVolumePoint(BaseModel):
+    """One month's recorded shipment volume."""
+
+    month: str
+    shipments: int
+
+
+class AnalyticsServicePerformanceSeries(BaseModel):
+    """On-time delivery by planned-arrival month plus its analytical basis."""
+
+    basis: str
+    points: list[AnalyticsServicePerformancePoint]
+
+
+class AnalyticsIncidenceSeries(BaseModel):
+    """Departure-month exception incidence plus its analytical basis."""
+
+    basis: str
+    points: list[AnalyticsIncidencePoint]
+
+
+class AnalyticsVolumeSeries(BaseModel):
+    """Shipment volume by planned-departure month plus its analytical basis."""
+
+    basis: str
+    points: list[AnalyticsVolumePoint]
+
+
+class AnalyticsTransportEntry(BaseModel):
+    """One transport mode's delivered population and on-time share."""
+
+    transport_mode: str
+    delivered: int
+    on_time: int
+    on_time_rate: float | None
+
+
+class AnalyticsCarrierEntry(BaseModel):
+    """One carrier's delivered population and on-time share."""
+
+    carrier_id: str
+    carrier_name: str
+    delivered: int
+    on_time: int
+    on_time_rate: float | None
+
+
+class AnalyticsWarehouseEntry(BaseModel):
+    """One warehouse's recorded exception count."""
+
+    warehouse_id: str
+    warehouse_name: str
+    exceptions: int
+
+
+class AnalyticsSeverityEntry(BaseModel):
+    """One severity class's open-exception count (workflow snapshot)."""
+
+    severity: str
+    exceptions: int
+
+
+class AnalyticsCategoricalSeries(BaseModel):
+    """A categorical breakdown plus its truthful analytical basis."""
+
+    basis: str
+    entries: list[
+        AnalyticsTransportEntry
+        | AnalyticsCarrierEntry
+        | AnalyticsWarehouseEntry
+        | AnalyticsSeverityEntry
+    ]
+
+
+class AnalyticsOverview(BaseModel):
+    """The analytical overview: seven honest datasets, no invented history."""
+
+    service_performance: AnalyticsServicePerformanceSeries
+    exception_incidence: AnalyticsIncidenceSeries
+    shipment_volume: AnalyticsVolumeSeries
+    transport: AnalyticsCategoricalSeries
+    carriers: AnalyticsCategoricalSeries
+    warehouses: AnalyticsCategoricalSeries
+    severity: AnalyticsCategoricalSeries
+
+
 class ManualInterventionRecord(BaseModel):
     intervention_id: str
     exception_id: str
@@ -809,6 +924,25 @@ def read_control_tower_summary(
     """Control-tower projection: bounded-queue and full-population metrics plus the follow-up and resolved queues."""
 
     return services.get_control_tower_summary(connection)
+
+
+@app.get(
+    "/v1/analytics/overview",
+    response_model=AnalyticsOverview,
+)
+def read_analytics_overview(
+    connection=Depends(get_db),
+    _api_key: str = Depends(require_api_key),
+):
+    """
+    Analytical overview for the control-tower visualization
+    layer (ADR-014): read-only, server-computed aggregations
+    with their analytical bases as contract metadata. The
+    frontend never performs domain arithmetic and never
+    invents a time axis.
+    """
+
+    return services.get_analytics_overview(connection)
 
 
 @app.get(

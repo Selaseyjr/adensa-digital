@@ -21,3 +21,4 @@ reviewing it for the first time.
 | [ADR-010](010-sustainability-aware-decision-support.md) | Sustainability-aware decision support (informational) | Accepted |
 | [ADR-011](011-versioned-application-boundary.md) | FastAPI as the versioned application boundary | Accepted |
 | [ADR-012](012-database-schema-evolution.md) | Application-managed database schema evolution | Accepted |
+| [ADR-014](014-analytics-overview.md) | Server-computed analytical overview for the control tower | Accepted |

@@ -55,6 +55,7 @@ from app.repositories import manual_interventions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
 from app.repositories import shipments_repo
+from app.repositories import analytics_repo
 from app.simulation import create_simulated_arrival
 from app.workflow_engine import (
     REJECTED,
@@ -1823,4 +1824,77 @@ def get_control_tower_summary(
             resolved_limit,
         ),
         "recently_resolved": recently_resolved,
+    }
+
+
+def get_analytics_overview(connection):
+    """
+    Compose the analytical overview for the control-tower
+    visualization layer (ADR-014).
+
+    Aggregation/projection only — each dataset is the
+    corresponding read-only repository query unchanged. The
+    per-dataset `basis` strings are part of the CONTRACT, not
+    UI copy: the frontend must be able to state every series'
+    analytical basis honestly ("Delivered shipments by
+    planned-arrival month") without the assumptions living
+    in component text.
+
+    Deliberately absent (the discovery audit's honesty
+    rules): no recovery-performance, resolution-performance
+    or exception-detection-trend series — the current data
+    carries no temporal observations for those analyses, and
+    the single batch detection timestamp is not a time
+    series. Rendering empty or synthetic history is worse
+    than rendering nothing.
+    """
+
+    return {
+        "service_performance": {
+            "basis": (
+                "Delivered shipments by planned-arrival month"
+            ),
+            "points": analytics_repo
+            .get_service_performance_by_month(connection),
+        },
+        "exception_incidence": {
+            "basis": (
+                "Exceptions by shipment departure month"
+            ),
+            "points": analytics_repo
+            .get_exception_incidence_by_month(connection),
+        },
+        "shipment_volume": {
+            "basis": (
+                "All shipments by planned-departure month"
+            ),
+            "points": analytics_repo
+            .get_shipment_volume_by_month(connection),
+        },
+        "transport": {
+            "basis": (
+                "Delivered shipments by transport mode"
+            ),
+            "entries": analytics_repo
+            .get_transport_mode_performance(connection),
+        },
+        "carriers": {
+            "basis": "Delivered shipments per carrier",
+            "entries": analytics_repo
+            .get_carrier_performance(connection),
+        },
+        "warehouses": {
+            "basis": (
+                "Exceptions per origin warehouse"
+            ),
+            "entries": analytics_repo
+            .get_exceptions_by_warehouse(connection),
+        },
+        "severity": {
+            "basis": (
+                "Open exceptions by severity (current snapshot)"
+            ),
+            "entries": analytics_repo
+            .get_severity_composition(connection),
+        },
     }

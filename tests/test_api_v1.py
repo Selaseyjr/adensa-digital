@@ -743,6 +743,162 @@ def test_ready_and_health_stay_public(seeded_database, monkeypatch):
 
 
 # ==================================================
+# ANALYTICS OVERVIEW (P8.7.1, ADR-014)
+# ==================================================
+
+def test_analytics_overview_contract_shape(api_client):
+    """
+    The analytical overview returns the seven supported
+    datasets, each with its basis metadata, over the same
+    API-key guard as the rest of the /v1 surface.
+    """
+
+    client, connection = api_client
+
+    response = client.get("/v1/analytics/overview")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert set(body.keys()) == {
+        "service_performance",
+        "exception_incidence",
+        "shipment_volume",
+        "transport",
+        "carriers",
+        "warehouses",
+        "severity",
+    }
+
+    for key in (
+        "service_performance",
+        "exception_incidence",
+        "shipment_volume",
+    ):
+        assert isinstance(body[key]["basis"], str)
+        assert isinstance(body[key]["points"], list)
+
+    for key in (
+        "transport",
+        "carriers",
+        "warehouses",
+        "severity",
+    ):
+        assert isinstance(body[key]["basis"], str)
+        assert isinstance(body[key]["entries"], list)
+
+
+def test_analytics_overview_values_match_domain_data(api_client):
+    """
+    The endpoint serves the real aggregates, not reshaped
+    operational rows: the fixture's on-time Road shipment and
+    delayed Sea shipment produce verifiable rate values.
+    """
+
+    client, connection = api_client
+
+    response = client.get("/v1/analytics/overview")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    # The fixture's two shipments both depart 2026-09:
+    # 2 departing, 1 exception (the Low-severity one's
+    # shipment is on time, the High one is delayed).
+    sep = body["exception_incidence"]["points"]
+    assert len(sep) == 1
+    assert sep[0]["month"] == "2026-09"
+    assert sep[0]["departing"] == 2
+    assert sep[0]["exceptions"] == 2
+    assert sep[0]["incidence_rate"] == 100.0
+
+    # Severity snapshot: both fixture exceptions are open.
+    severity = {
+        entry["severity"]: entry["exceptions"]
+        for entry in body["severity"]["entries"]
+    }
+    assert severity["Low"] == 1
+    assert severity["High"] == 1
+
+    # No delivered shipments exist in the fixture, so the
+    # service-performance series is empty — never zero-filled.
+    assert body["service_performance"]["points"] == []
+
+
+def test_analytics_overview_requires_api_key(seeded_database, monkeypatch):
+    """
+    Analytics is an operational read behind the same guard:
+    missing and wrong keys are rejected before any query.
+    """
+
+    monkeypatch.setattr("app.api.ADENSA_API_KEY", TEST_API_KEY)
+
+    with TestClient(app) as client:
+
+        assert (
+            client.get("/v1/analytics/overview").status_code
+            == 401
+        )
+        assert (
+            client.get(
+                "/v1/analytics/overview",
+                headers={"X-API-Key": "wrong-key"},
+            ).status_code
+            == 401
+        )
+
+
+def test_analytics_overview_response_validates_against_contract(
+    api_client,
+):
+    """
+    The response must satisfy the explicit Pydantic contract
+    (no undeclared fields, correct types) — the generated
+    OpenAPI schema is the reference.
+    """
+
+    client, _ = api_client
+
+    response = client.get("/v1/analytics/overview")
+
+    assert response.status_code == 200
+
+    schema = client.get(
+        "/openapi.json"
+    ).json()["components"]["schemas"]
+
+    overview_schema = schema["AnalyticsOverview"]
+
+    declared = set(
+        overview_schema["properties"].keys()
+    )
+
+    assert declared == {
+        "service_performance",
+        "exception_incidence",
+        "shipment_volume",
+        "transport",
+        "carriers",
+        "warehouses",
+        "severity",
+    }
+
+    # Each dataset's discriminated model is referenced, so the
+    # OpenAPI contract documents the exact point/entry shapes.
+    refs = str(overview_schema)
+
+    for model in (
+        "AnalyticsServicePerformanceSeries",
+        "AnalyticsIncidenceSeries",
+        "AnalyticsVolumeSeries",
+        "AnalyticsCategoricalSeries",
+    ):
+        assert model in refs
+
+
+# ==================================================
 # CORS CONFIGURATION
 # ==================================================
 
