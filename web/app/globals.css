@@ -763,6 +763,68 @@ textarea:focus-visible,
 }
 
 /* ==================================================
+   EXCEPTION INBOX — WORK QUEUE (P8.2)
+   ================================================== */
+
+.inbox-toolbar-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.inbox-field-grow {
+  flex: 1 1 220px;
+}
+
+.inbox-toolbar-form .action-field {
+  min-width: 140px;
+}
+
+.inbox-toolbar-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.inbox-result-count {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.inbox-filtered-empty {
+  margin-top: var(--space-3);
+}
+
+/* Stacked reference line under the exception link: carries
+   shipment/mode/location into the primary cell so they
+   survive column prioritization at narrow widths. */
+
+.queue-cell-reference {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Column prioritization: `data-priority` tiers on cells and
+   headers. Tier 2 folds away at the mid tier (the same
+   information is stacked in the primary cell), tier 3 at the
+   narrow tier. Scrolling remains the fallback — never the
+   design. */
+
+@media (max-width: 900px) {
+  .data-table [data-priority="secondary"] {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .data-table [data-priority="tertiary"] {
+    display: none;
+  }
+}
+
+/* ==================================================
    RESPONSIVE FOUNDATION
    ==================================================
    Three deliberate widths: full desktop, a mid-width
@@ -788,6 +850,10 @@ textarea:focus-visible,
 @media (max-width: 720px) {
   .history-timestamp {
     flex-basis: 100px;
+  }
+
+  .inbox-toolbar-actions {
+    flex: 1 1 100%;
   }
 }
 

@@ -6,8 +6,16 @@
  * exception ID in the URL (`?exception=...`), which is the
  * business-appropriate interaction: linkable, shareable and
  * free of the AppTest constraints that shaped the Streamlit
- * inbox. Backend ordering (actionable first, then newest
- * detected) is preserved verbatim — no client-side sorting.
+ * inbox.
+ *
+ * Filtering, search and sorting (P8.2) are client-side over
+ * the bounded inbox payload and equally URL-driven
+ * (`?q=&severity=&verdict=&sort=`): the page parses the query
+ * params, the pure helpers in `inbox-filters.ts` narrow and
+ * order the rows, and the whole filtered view is a
+ * bookmarkable URL. The default presentation remains the
+ * backend's operational order verbatim — no client-side sort
+ * unless the planner explicitly requests one.
  */
 
 import { Suspense } from "react";
@@ -19,12 +27,21 @@ import {
   UnavailablePanel,
 } from "@/components/StatePanels";
 import { ExceptionInboxTable } from "@/components/exceptions/ExceptionInboxTable";
+import { InboxToolbar } from "@/components/exceptions/InboxToolbar";
 import { SelectedExceptionPanel } from "@/components/exceptions/SelectedExceptionPanel";
+import {
+  filterInboxRows,
+  parseInboxFilters,
+  severityOptionsIn,
+  sortInboxRows,
+} from "@/components/exceptions/inbox-filters";
 
 async function ExceptionInbox({
   selectedExceptionId,
+  filterState,
 }: {
   selectedExceptionId?: string;
+  filterState: ReturnType<typeof parseInboxFilters>;
 }) {
   const result = await getExceptionInbox();
 
@@ -43,13 +60,39 @@ async function ExceptionInbox({
           (row) => row.exception_id === selectedExceptionId,
         ) ?? null;
 
+      const filteredRows = sortInboxRows(
+        filterInboxRows(result.data, filterState),
+        filterState.sort,
+      );
+
       return (
         <>
           <section className="section" aria-label="Exception work queue">
-            <ExceptionInboxTable
-              rows={result.data}
+            <InboxToolbar
+              state={filterState}
+              severityOptions={severityOptionsIn(result.data)}
+              visibleCount={filteredRows.length}
+              totalCount={result.data.length}
               selectedExceptionId={selected?.exception_id ?? null}
             />
+            {filteredRows.length > 0 ? (
+              <ExceptionInboxTable
+                rows={filteredRows}
+                selectedExceptionId={selected?.exception_id ?? null}
+              />
+            ) : (
+              <div className="state-panel inbox-filtered-empty">
+                <p className="state-panel-strong">
+                  No exceptions match the active filters.
+                </p>
+                <p>
+                  {result.data.length} queued{" "}
+                  {result.data.length === 1 ? "exception" : "exceptions"} fall
+                  outside the current search, severity and recovery-state
+                  selection.
+                </p>
+              </div>
+            )}
           </section>
           {selected !== null ? (
             <SelectedExceptionPanel exception={selected} />
@@ -67,9 +110,10 @@ async function ExceptionInbox({
 export default async function ExceptionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ exception?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  const filterState = parseInboxFilters(params);
 
   return (
     <>
@@ -77,10 +121,14 @@ export default async function ExceptionsPage({
       <p className="page-intro">
         The bounded operational work queue, ordered actionable-first by the
         backend: exceptions with feasible recovery ahead of monitored ones,
-        newest detected work first.
+        newest detected work first. Search, filter and sort to shape the
+        queue — filtered views are ordinary URLs you can bookmark.
       </p>
       <Suspense fallback={<LoadingPanel label="exception queue" />}>
-        <ExceptionInbox selectedExceptionId={params.exception} />
+        <ExceptionInbox
+          selectedExceptionId={params.exception as string | undefined}
+          filterState={filterState}
+        />
       </Suspense>
     </>
   );
