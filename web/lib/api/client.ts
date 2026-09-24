@@ -310,7 +310,12 @@ async function postToApi<T>(
 /**
  * Structural validator for a workflow-mutation outcome: the
  * fields every approve/reject/execute/manual-resolution
- * response carries.
+ * response carries. `action_id` and `shipment_id` are the
+ * backend's nullable identity fields — the manual-resolution
+ * outcome legitimately carries null for both, so the
+ * validator must accept exactly what the contract declares
+ * (`str | None`), not the populated shape of the
+ * approve/reject/execute paths.
  */
 export function isWorkflowOutcome(body: unknown): WorkflowOutcome | null {
   if (typeof body !== "object" || body === null) {
@@ -318,10 +323,15 @@ export function isWorkflowOutcome(body: unknown): WorkflowOutcome | null {
   }
 
   const candidate = body as Record<string, unknown>;
+  const isStringOrNull = (value: unknown) =>
+    value === null || typeof value === "string";
 
   return typeof candidate.success === "boolean" &&
     typeof candidate.message === "string" &&
-    typeof candidate.action_id === "string"
+    isStringOrNull(candidate.action_id) &&
+    isStringOrNull(candidate.shipment_id) &&
+    isStringOrNull(candidate.previous_mode) &&
+    isStringOrNull(candidate.new_mode)
     ? (body as WorkflowOutcome)
     : null;
 }

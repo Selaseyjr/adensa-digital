@@ -355,6 +355,13 @@ export function makeManualResolutionOutcome(
 ): ManualResolutionOutcome {
   return {
     ...makeWorkflowOutcome({
+      // The manual-resolution contract carries null identity
+      // fields — no system action is involved (P7.2 live
+      // verification surfaced this real backend shape).
+      action_id: null,
+      shipment_id: null,
+      previous_mode: null,
+      new_mode: null,
       message: "Manual resolution INT-0001 recorded for EXC-001529.",
     }),
     exception_id: "EXC-001529",
