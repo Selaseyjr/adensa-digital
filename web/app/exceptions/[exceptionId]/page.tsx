@@ -47,6 +47,9 @@ import { OperationalHistory } from "@/components/investigation/OperationalHistor
 import { SustainabilitySection } from "@/components/investigation/SustainabilitySection";
 import { WorkflowAction } from "@/components/investigation/WorkflowAction";
 import { AiDecisionBrief } from "@/components/investigation/AiDecisionBrief";
+import { WorkspaceSectionIndex } from "@/components/investigation/WorkspaceSectionIndex";
+import type { WorkspaceSectionRef } from "@/components/investigation/WorkspaceSectionIndex";
+import { WorkflowProgression } from "@/components/investigation/WorkflowProgression";
 
 export type WorkspaceData = {
   state: Awaited<ReturnType<typeof getInvestigationState>>;
@@ -124,111 +127,144 @@ async function InvestigationWorkspace({
   const state =
     data.state.kind === "data" ? data.state.data : null;
 
+  // In-page section index: every wrapper below renders in this
+  // path (each section degrades to its own honest panel rather
+  // than disappearing), so the anchor list is static and only
+  // ever targets sections that exist.
+  const sections: WorkspaceSectionRef[] = [
+    { id: "state", label: "State" },
+    { id: "situation", label: "Situation & Impact" },
+    { id: "decision-support", label: "Decision Support" },
+    { id: "history", label: "History" },
+    { id: "sustainability", label: "Sustainability" },
+    { id: "advisory", label: "AI Advisory" },
+    { id: "workflow-action", label: "Workflow Action" },
+  ];
+
   return (
     <>
-      {state !== null ? (
-        <WorkspaceHeader context={data.context.data} state={state} />
-      ) : (
-        <section
-          className="section workspace-header"
-          aria-label="Investigation state"
-        >
-          <div className="workspace-header-main">
-            <h2 className="section-title">
-              {data.context.data.exception_id} —{" "}
-              {data.context.data.exception_type}
-            </h2>
-            <p className="workspace-header-meta">
-              Shipment {data.context.data.shipment_id} · Order{" "}
-              {data.context.data.order_id} · {data.context.data.customer_name}
+      <WorkspaceSectionIndex sections={sections} />
+
+      <div id="state">
+        {state !== null ? (
+          <>
+            <WorkspaceHeader context={data.context.data} state={state} />
+            <WorkflowProgression state={state} />
+          </>
+        ) : (
+          <section
+            className="section workspace-header"
+            aria-label="Investigation state"
+          >
+            <div className="workspace-header-main">
+              <h2 className="section-title">
+                {data.context.data.exception_id} —{" "}
+                {data.context.data.exception_type}
+              </h2>
+              <p className="workspace-header-meta">
+                Shipment {data.context.data.shipment_id} · Order{" "}
+                {data.context.data.order_id} · {data.context.data.customer_name}
+              </p>
+            </div>
+            <div className="workspace-header-state">
+              <span className="chip chip-neutral">State unavailable</span>
+            </div>
+          </section>
+        )}
+      </div>
+
+      <div id="situation">
+        <SituationImpact context={data.context.data} />
+      </div>
+
+      <div id="decision-support">
+        {data.assessment.kind === "data" ? (
+          <DecisionSupport assessment={data.assessment.data} />
+        ) : data.assessment.kind === "empty" ? (
+          <section className="section" aria-label="Decision support">
+            <h3 className="section-title">Decision Support</h3>
+            <p className="section-caption">
+              No recovery assessment exists for this exception.
             </p>
-          </div>
-          <div className="workspace-header-state">
-            <span className="chip chip-neutral">State unavailable</span>
-          </div>
-        </section>
-      )}
+          </section>
+        ) : (
+          <OptionalSectionFallback
+            result={data.assessment}
+            section="Decision support"
+          />
+        )}
+      </div>
 
-      <SituationImpact context={data.context.data} />
+      <div id="history">
+        {data.history.kind === "data" ? (
+          <OperationalHistory entries={data.history.data} />
+        ) : data.history.kind === "empty" ? (
+          <section className="section" aria-label="Operational history">
+            <h3 className="section-title">Operational History</h3>
+            <p className="section-caption">
+              No operational history is available for this exception.
+            </p>
+          </section>
+        ) : (
+          <OptionalSectionFallback
+            result={data.history}
+            section="Operational history"
+          />
+        )}
+      </div>
 
-      {data.assessment.kind === "data" ? (
-        <DecisionSupport assessment={data.assessment.data} />
-      ) : data.assessment.kind === "empty" ? (
-        <section className="section" aria-label="Decision support">
-          <h3 className="section-title">Decision Support</h3>
-          <p className="section-caption">
-            No recovery assessment exists for this exception.
-          </p>
-        </section>
-      ) : (
-        <OptionalSectionFallback
-          result={data.assessment}
-          section="Decision support"
-        />
-      )}
+      <div id="sustainability">
+        {data.sustainability.kind === "data" ? (
+          <SustainabilitySection sustainability={data.sustainability.data} />
+        ) : (
+          <OptionalSectionFallback
+            result={data.sustainability}
+            section="Sustainability impact"
+          />
+        )}
+      </div>
 
-      {data.history.kind === "data" ? (
-        <OperationalHistory entries={data.history.data} />
-      ) : data.history.kind === "empty" ? (
-        <section className="section" aria-label="Operational history">
-          <h3 className="section-title">Operational History</h3>
-          <p className="section-caption">
-            No operational history is available for this exception.
-          </p>
-        </section>
-      ) : (
-        <OptionalSectionFallback
-          result={data.history}
-          section="Operational history"
-        />
-      )}
+      <div id="advisory">
+        {data.brief.kind === "data" ? (
+          <AiDecisionBrief brief={data.brief.data} />
+        ) : data.brief.kind === "empty" ? (
+          <aside className="section ai-advisory" aria-label="AI advisory">
+            <h3 className="section-title">AI Advisory</h3>
+            <p className="section-caption">
+              No advisory brief is available for this exception. The
+              deterministic recommendation above remains the authoritative
+              decision support.
+            </p>
+          </aside>
+        ) : (
+          <OptionalSectionFallback
+            result={data.brief}
+            section="AI advisory"
+          />
+        )}
+      </div>
 
-      {data.sustainability.kind === "data" ? (
-        <SustainabilitySection sustainability={data.sustainability.data} />
-      ) : (
-        <OptionalSectionFallback
-          result={data.sustainability}
-          section="Sustainability impact"
-        />
-      )}
-
-      {data.brief.kind === "data" ? (
-        <AiDecisionBrief brief={data.brief.data} />
-      ) : data.brief.kind === "empty" ? (
-        <aside className="section ai-advisory" aria-label="AI advisory">
-          <h3 className="section-title">AI Advisory</h3>
-          <p className="section-caption">
-            No advisory brief is available for this exception. The
-            deterministic recommendation above remains the authoritative
-            decision support.
-          </p>
-        </aside>
-      ) : (
-        <OptionalSectionFallback
-          result={data.brief}
-          section="AI advisory"
-        />
-      )}
-
-      {data.interventions.kind === "data" || data.interventions.kind === "empty" ? (
-        <WorkflowAction
-          state={state}
-          interventions={
-            data.interventions.kind === "data" ? data.interventions.data : []
-          }
-          exceptionId={exceptionId}
-          latestActionId={
-            data.latestAction.kind === "data"
-              ? data.latestAction.data.action_id
-              : null
-          }
-        />
-      ) : (
-        <OptionalSectionFallback
-          result={data.interventions}
-          section="Workflow action"
-        />
-      )}
+      <div id="workflow-action">
+        {data.interventions.kind === "data" || data.interventions.kind === "empty" ? (
+          <WorkflowAction
+            state={state}
+            interventions={
+              data.interventions.kind === "data" ? data.interventions.data : []
+            }
+            exceptionId={exceptionId}
+            latestActionId={
+              data.latestAction.kind === "data"
+                ? data.latestAction.data.action_id
+                : null
+            }
+          />
+        ) : (
+          <OptionalSectionFallback
+            result={data.interventions}
+            section="Workflow action"
+          />
+        )}
+      </div>
     </>
   );
 }

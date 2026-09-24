@@ -4,6 +4,11 @@
  * (Checkpoint V framing). Estimated, prototype-factor-based
  * figures are labelled as such; the structured unavailable
  * state is rendered as an honest "no comparison" record.
+ *
+ * The estimate table and methodology are secondary,
+ * high-density information and sit inside a native
+ * <details> disclosure (P8.4): verbatim content, native
+ * semantics, keyboard accessible, no JS state.
  */
 
 import type {
@@ -44,39 +49,48 @@ export function SustainabilitySection({
           recovery options.
         </p>
       ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Option</th>
-                <th>Mode</th>
-                <th>Estimated CO₂e (kg)</th>
-                <th>vs Recommended</th>
-              </tr>
-            </thead>
-            <tbody>
-              {available.map((estimate) => {
-                const tradeOff = sustainability.trade_offs.find(
-                  (candidate) => candidate.option_id === estimate.option_id,
-                );
+        <details className="subsection-details sustainability-details">
+          <summary className="subsection-summary">
+            Emissions estimates ({available.length}{" "}
+            {available.length === 1 ? "option" : "options"}) &amp; methodology
+          </summary>
 
-                return (
-                  <tr key={estimate.option_id ?? estimate.transport_mode}>
-                    <td>{estimate.option_id ?? "—"}</td>
-                    <td>{estimate.transport_mode}</td>
-                    <td>{estimate.estimated_co2e_kg}</td>
-                    <td>{tradeOff ? tradeOff.relative_to_recommendation : "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Option</th>
+                  <th>Mode</th>
+                  <th>Estimated CO₂e (kg)</th>
+                  <th>vs Recommended</th>
+                </tr>
+              </thead>
+              <tbody>
+                {available.map((estimate) => {
+                  const tradeOff = sustainability.trade_offs.find(
+                    (candidate) => candidate.option_id === estimate.option_id,
+                  );
+
+                  return (
+                    <tr key={estimate.option_id ?? estimate.transport_mode}>
+                      <td>{estimate.option_id ?? "—"}</td>
+                      <td>{estimate.transport_mode}</td>
+                      <td>{estimate.estimated_co2e_kg}</td>
+                      <td>
+                        {tradeOff ? tradeOff.relative_to_recommendation : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="section-caption sustainability-methodology">
+            Methodology: {sustainability.methodology}
+          </p>
+        </details>
       )}
-
-      <p className="section-caption sustainability-methodology">
-        Methodology: {sustainability.methodology}
-      </p>
     </section>
   );
 }

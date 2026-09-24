@@ -17,7 +17,7 @@
  * re-interpreted or bypassed.
  */
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import type {
   InvestigationState,
   ManualInterventionRecord,
@@ -73,14 +73,33 @@ const RESULT_TONE: Record<string, string> = {
   unexpected: "var(--critical)",
 };
 
-/** One shared inline banner for every mutation feedback state. */
+/**
+ * One shared inline banner for every mutation feedback state.
+ *
+ * P8.4 focus management: the banner is a focus target
+ * (`tabIndex={-1}`) and receives focus when it appears, so
+ * keyboard and screen-reader users land on the outcome
+ * without losing their place in the workflow section. It
+ * remains a polite live region (`role="status"`) — the focus
+ * move and the announcement are complementary, not redundant.
+ * Focus is moved programmatically only; the visual focus ring
+ * is suppressed for this programmatic target (the P8.1
+ * focus-visible system applies to keyboard reaches).
+ */
 function ResultBanner({ result }: { result: ActionResult }) {
+  const bannerRef = useRef<HTMLParagraphElement>(null);
   const tone = RESULT_TONE[result.status] ?? "var(--critical)";
+
+  useEffect(() => {
+    bannerRef.current?.focus();
+  }, []);
 
   return (
     <p
+      ref={bannerRef}
       className="action-result-banner"
       role="status"
+      tabIndex={-1}
       style={{ color: tone, borderColor: tone }}
     >
       {result.message}
@@ -155,6 +174,26 @@ export function WorkflowAction({
         </p>
       )}
       <p className="workflow-next-step">{nextStep}</p>
+
+      {/* Mutation result: hoisted OUTSIDE the state-gated blocks.
+          A successful mutation changes the persisted state, so the
+          gated controls (and any banner rendered inside them) would
+          unmount on revalidation — the outcome would never be seen.
+          From here the banner survives the gating change, receives
+          focus, and the updated state chip/progression show the new
+          position. The key remounts the banner per distinct result
+          so the focus effect re-fires. */}
+      {(() => {
+        const activeResult =
+          approveResult ?? rejectResult ?? executeResult ?? manualResult;
+
+        return activeResult !== null ? (
+          <ResultBanner
+            key={`${activeResult.status}:${activeResult.message}`}
+            result={activeResult}
+          />
+        ) : null;
+      })()}
 
       {/* ---------------- decide: approve / reject ---------------- */}
       {canDecide ? (
@@ -234,8 +273,6 @@ export function WorkflowAction({
             </form>
           ) : null}
 
-          {approveResult !== null ? <ResultBanner result={approveResult} /> : null}
-          {rejectResult !== null ? <ResultBanner result={rejectResult} /> : null}
         </div>
       ) : null}
 
@@ -262,7 +299,6 @@ export function WorkflowAction({
           >
             {isExecutePending ? "Executing…" : "Execute recovery"}
           </button>
-          {executeResult !== null ? <ResultBanner result={executeResult} /> : null}
         </div>
       ) : null}
 
@@ -338,7 +374,6 @@ export function WorkflowAction({
               {manualPending ? "Recording…" : "Record manual resolution"}
             </button>
           </div>
-          {manualResult !== null ? <ResultBanner result={manualResult} /> : null}
         </form>
       ) : null}
 

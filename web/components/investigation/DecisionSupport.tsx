@@ -110,8 +110,8 @@ function RationaleBlock({
   rationale: NonNullable<RecoveryAssessment["rationale"]>;
 }) {
   return (
-    <div className="rationale">
-      <h4 className="subsection-title">Why this recommendation</h4>
+    <details className="rationale subsection-details">
+      <summary className="subsection-summary">Why this recommendation</summary>
 
       <div className="table-wrap">
         <table className="data-table">
@@ -164,7 +164,7 @@ function RationaleBlock({
       <p className="confidence-basis">
         <strong>Confidence basis:</strong> {rationale.confidence_basis}
       </p>
-    </div>
+    </details>
   );
 }
 
@@ -221,7 +221,13 @@ export function DecisionSupport({
             resolution requires human intervention outside the system.
           </p>
           {assessment.evaluated_options.length > 0 ? (
-            <EvaluatedOptionsTable options={assessment.evaluated_options} />
+            <details className="subsection-details">
+              <summary className="subsection-summary">
+                Evaluated recovery options ({assessment.evaluated_options.length}{" "}
+                {assessment.evaluated_options.length === 1 ? "option" : "options"})
+              </summary>
+              <EvaluatedOptionsTable options={assessment.evaluated_options} />
+            </details>
           ) : null}
         </>
       )}

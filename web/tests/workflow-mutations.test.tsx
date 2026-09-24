@@ -348,6 +348,10 @@ describe("WorkflowAction — decision flow", () => {
       );
     });
 
+    // P8.4 focus management: the result banner is the focus
+    // target so keyboard/SR users land on the outcome.
+    expect(screen.getByRole("status")).toHaveFocus();
+
     expect(revalidatePath).toHaveBeenCalledWith(
       "/exceptions/EXC-001529",
     );

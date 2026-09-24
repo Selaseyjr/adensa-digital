@@ -35,6 +35,8 @@ import { OperationalHistory } from "@/components/investigation/OperationalHistor
 import { SustainabilitySection } from "@/components/investigation/SustainabilitySection";
 import { AiDecisionBrief } from "@/components/investigation/AiDecisionBrief";
 import { WorkflowAction } from "@/components/investigation/WorkflowAction";
+import { WorkspaceSectionIndex } from "@/components/investigation/WorkspaceSectionIndex";
+import { WorkflowProgression } from "@/components/investigation/WorkflowProgression";
 import {
   getExceptionContext,
   getInvestigationState,
@@ -118,9 +120,10 @@ describe("decision support", () => {
 
     expect(screen.getByText("Why this recommendation")).toBeInTheDocument();
 
+    // P8.4: the rationale is a native disclosure; scope within it.
     const rationale = screen
       .getByText("Why this recommendation")
-      .closest("div")!;
+      .closest("details")!;
 
     expect(within(rationale).getByText("Cost")).toBeInTheDocument();
     expect(within(rationale).getByText("0.3")).toBeInTheDocument(); // weight
@@ -482,5 +485,278 @@ describe("workspace data loading over the API boundary", () => {
     const result = await getRecoveryAssessment("EXC-001529");
 
     expect(result.kind).toBe("unexpected");
+  });
+});
+
+// ==================================================
+// P8.4 — SECTION INDEX, PROGRESSION, TIMELINE, DISCLOSURE
+// ==================================================
+
+const INDEX_SECTIONS = [
+  { id: "state", label: "State" },
+  { id: "situation", label: "Situation & Impact" },
+  { id: "decision-support", label: "Decision Support" },
+  { id: "history", label: "History" },
+  { id: "sustainability", label: "Sustainability" },
+  { id: "advisory", label: "AI Advisory" },
+  { id: "workflow-action", label: "Workflow Action" },
+];
+
+describe("workspace section index", () => {
+  it("renders a nav landmark with an anchor per section", () => {
+    render(<WorkspaceSectionIndex sections={INDEX_SECTIONS} />);
+
+    const nav = screen.getByRole("navigation", {
+      name: "Workspace sections",
+    });
+    const links = within(nav).getAllByRole("link");
+
+    expect(links).toHaveLength(INDEX_SECTIONS.length);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(
+      INDEX_SECTIONS.map((section) => `#${section.id}`),
+    );
+    expect(links.map((link) => link.textContent)).toEqual(
+      INDEX_SECTIONS.map((section) => section.label),
+    );
+  });
+
+  it("marks the first section as the initial location", () => {
+    render(<WorkspaceSectionIndex sections={INDEX_SECTIONS} />);
+
+    const links = screen.getAllByRole("link");
+    const current = links.filter((link) =>
+      link.hasAttribute("aria-current"),
+    );
+
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAttribute("aria-current", "location");
+    expect(current[0].textContent).toBe("State");
+  });
+
+  it("renders nothing without sections", () => {
+    const { container } = render(<WorkspaceSectionIndex sections={[]} />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("workflow progression", () => {
+  it("positions each common-path state exactly, without inventing stages", () => {
+    const { container: decide } = render(
+      <WorkflowProgression
+        state={makeInvestigationState({ state: "Decision required" })}
+      />,
+    );
+    expect(decide.querySelectorAll("li")).toHaveLength(4);
+    expect(
+      decide.querySelector(".progression-step-current")!.textContent,
+    ).toContain("Decision");
+
+    const { container: execute } = render(
+      <WorkflowProgression
+        state={makeInvestigationState({ state: "Awaiting execution" })}
+      />,
+    );
+    const executeItems = [...execute.querySelectorAll("li")];
+    expect(executeItems).toHaveLength(4);
+    expect(
+      executeItems.find((li) => li.className.includes("current"))!.textContent,
+    ).toContain("Execution");
+
+    const { container: resolved } = render(
+      <WorkflowProgression state={makeInvestigationState({ state: "Resolved" })} />,
+    );
+    expect(
+      resolved.querySelector(".progression-step-current")!.textContent,
+    ).toContain("Outcome");
+  });
+
+  it("uses the manual-resolution path for the manual states", () => {
+    for (const stateName of [
+      "No system recovery available",
+      "Executed — still open",
+    ]) {
+      const { container, unmount } = render(
+        <WorkflowProgression
+          state={makeInvestigationState({ state: stateName })}
+        />,
+      );
+
+      const items = [...container.querySelectorAll("li")];
+      expect(items.map((li) => li.textContent)).toEqual([
+        "DetectedCompleted",
+        "Manual resolutionCurrent",
+        "OutcomeUpcoming",
+      ]);
+      unmount();
+    }
+  });
+
+  it("marks exactly one current step with aria-current=step", () => {
+    const { container } = render(
+      <WorkflowProgression
+        state={makeInvestigationState({ state: "Awaiting execution" })}
+      />,
+    );
+
+    const current = [...container.querySelectorAll("li")].filter((li) =>
+      li.hasAttribute("aria-current"),
+    );
+
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAttribute("aria-current", "step");
+  });
+
+  it("renders nothing for unknown state strings", () => {
+    const { container } = render(
+      <WorkflowProgression
+        state={makeInvestigationState({ state: "Mystery state" })}
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("contains no fabricated progress percentages", () => {
+    const { container } = render(
+      <WorkflowProgression
+        state={makeInvestigationState({ state: "Resolved" })}
+      />,
+    );
+
+    expect(container.textContent).not.toMatch(/%|\d+%/);
+  });
+});
+
+describe("history timeline presentation", () => {
+  it("maps known event strings to neutral display markers", () => {
+    const { container } = render(
+      <OperationalHistory
+        entries={[
+          makeHistoryEntry({ event: "Exception detected", sequence: 1 }),
+          makeHistoryEntry({ event: "Recovery approved", sequence: 2 }),
+          makeHistoryEntry({ event: "Recovery executed", sequence: 3 }),
+        ]}
+      />,
+    );
+
+    expect(
+      container.querySelector(".history-marker.marker-detected"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(".history-marker.marker-decision"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(".history-marker.marker-executed"),
+    ).not.toBeNull();
+  });
+
+  it("falls back to the neutral marker for unknown event strings", () => {
+    const { container } = render(
+      <OperationalHistory
+        entries={[makeHistoryEntry({ event: "Something entirely new" })]}
+      />,
+    );
+
+    expect(
+      container.querySelector(".history-marker.marker-neutral"),
+    ).not.toBeNull();
+  });
+
+  it("keeps the event, detail and actor text verbatim", () => {
+    render(
+      <OperationalHistory
+        entries={[
+          makeHistoryEntry({
+            event: "Recovery approved",
+            detail: "ACT-000001 approved under the recovery workflow.",
+            actor: "P. Planner",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/Recovery approved/)).toBeInTheDocument();
+    expect(
+      screen.getByText("ACT-000001 approved under the recovery workflow."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/— P. Planner/)).toBeInTheDocument();
+  });
+
+  it("hides the display marker from assistive technology", () => {
+    const { container } = render(
+      <OperationalHistory entries={[makeHistoryEntry()]} />,
+    );
+
+    expect(container.querySelector(".history-marker")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+  });
+});
+
+describe("progressive disclosure", () => {
+  it("renders the rationale as a native disclosure with a summary", () => {
+    render(<DecisionSupport assessment={makeAssessment()} />);
+
+    const rationaleSummary = screen
+      .getByText("Why this recommendation")
+      .closest("summary");
+    expect(rationaleSummary).not.toBeNull();
+    expect(rationaleSummary!.closest("details")).not.toBeNull();
+  });
+
+  it("renders evaluated infeasible options as a native disclosure", () => {
+    render(
+      <DecisionSupport
+        assessment={makeAssessment({
+          recommendation: null,
+          alternatives: [],
+          rationale: null,
+          evaluated_options: [
+            {
+              option_id: "OPT-0009",
+              transport_mode: "Sea",
+              carrier_id: "CAR-001",
+              estimated_cost: 2100,
+              estimated_transit_days: 21,
+              risk_score: 0.9,
+              feasible: false,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const evaluatedSummary = screen
+      .getByText(/Evaluated recovery options/)
+      .closest("summary");
+    expect(evaluatedSummary).not.toBeNull();
+
+    // The no-feasible-recovery message stays outside any disclosure.
+    expect(
+      screen.getByText("No feasible system recovery available."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the recommendation visible outside any disclosure", () => {
+    render(<DecisionSupport assessment={makeAssessment()} />);
+
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+    expect(screen.getByText("OPT-0001 — Road")).toBeInTheDocument();
+  });
+
+  it("collapses sustainability detail behind a summary", () => {
+    render(
+      <SustainabilitySection sustainability={makeSustainabilityComparison()} />,
+    );
+
+    expect(
+      screen.getByText(/Emissions estimates/),
+    ).toBeInTheDocument();
+    const sustainabilityDetails = [
+      ...document.querySelectorAll("details.sustainability-details"),
+    ];
+    expect(sustainabilityDetails).toHaveLength(1);
   });
 });
