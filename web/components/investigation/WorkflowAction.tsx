@@ -155,6 +155,48 @@ export function WorkflowAction({
     null,
   );
 
+  // The banner shows the most recently completed mutation. Each
+  // completed mutation swaps a fresh result object into exactly
+  // one of the four slots, so the effect below compares each slot
+  // against its previously-seen value and adopts the fresh one.
+  // A bare precedence chain (approve ?? reject ?? execute ??
+  // manual) cannot work here: it stays pinned to the first
+  // non-null slot forever, so after approve → execute the
+  // approval banner would shadow the execute outcome indefinitely
+  // (live-verified defect). Null never overwrites the banner, so
+  // it also survives the revalidation that follows a success.
+  const seenSlotsRef = useRef<(ActionResult | null)[]>([
+    null,
+    null,
+    null,
+    null,
+  ]);
+  const [activeResult, setActiveResult] = useState<ActionResult | null>(
+    null,
+  );
+  useEffect(() => {
+    const seen = seenSlotsRef.current;
+    const fresh: ActionResult[] = [];
+    ([
+      approveResult,
+      rejectResult,
+      executeResult,
+      manualResult,
+    ] as (ActionResult | null)[]).forEach((slot, index) => {
+      if (slot !== seen[index]) {
+        seen[index] = slot;
+        if (slot !== null) {
+          fresh.push(slot);
+        }
+      }
+    });
+    if (fresh.length > 0) {
+      // Last fresh slot wins; slots are checked in the workflow's
+      // natural order, so this is the most recent outcome.
+      setActiveResult(fresh[fresh.length - 1]);
+    }
+  }, [approveResult, rejectResult, executeResult, manualResult]);
+
   const busy = approvePending || rejectPending || manualPending || isExecutePending;
 
   return (
@@ -182,18 +224,23 @@ export function WorkflowAction({
           From here the banner survives the gating change, receives
           focus, and the updated state chip/progression show the new
           position. The key remounts the banner per distinct result
-          so the focus effect re-fires. */}
-      {(() => {
-        const activeResult =
-          approveResult ?? rejectResult ?? executeResult ?? manualResult;
+          so the focus effect re-fires.
 
-        return activeResult !== null ? (
-          <ResultBanner
-            key={`${activeResult.status}:${activeResult.message}`}
-            result={activeResult}
-          />
-        ) : null;
-      })()}
+          Recency (live-verified P8.5): a bare precedence chain
+          across the four result slots keeps an earlier outcome
+          (e.g. the approval banner) mounted after revalidation
+          advances the state gate — so the subsequent execute
+          outcome could never replace it. The workflow is always
+          sequential (approve → execute), so the banner shows the
+          most recently COMPLETED mutation. A null direct result
+          (initial mount) keeps the last one, preserving the
+          survive-revalidation behavior above. */}
+      {activeResult !== null ? (
+        <ResultBanner
+          key={`${activeResult.status}:${activeResult.message}`}
+          result={activeResult}
+        />
+      ) : null}
 
       {/* ---------------- decide: approve / reject ---------------- */}
       {canDecide ? (
@@ -220,7 +267,7 @@ export function WorkflowAction({
           ) : null}
 
           {decisionMode === "approve" ? (
-            <form action={approveFormAction}>
+            <form action={approveFormAction} aria-busy={approvePending}>
               <label className="action-field">
                 <span>Approving as planner</span>
                 <input
@@ -247,7 +294,7 @@ export function WorkflowAction({
           ) : null}
 
           {decisionMode === "reject" ? (
-            <form action={rejectFormAction}>
+            <form action={rejectFormAction} aria-busy={rejectPending}>
               <label className="action-field">
                 <span>Rejecting as planner</span>
                 <input
@@ -304,7 +351,7 @@ export function WorkflowAction({
 
       {/* ---------------- manual resolution ---------------- */}
       {canManuallyResolve ? (
-        <form action={manualFormAction}>
+        <form action={manualFormAction} aria-busy={manualPending}>
           <div className="action-field-grid">
             <label className="action-field">
               <span>Intervention type</span>

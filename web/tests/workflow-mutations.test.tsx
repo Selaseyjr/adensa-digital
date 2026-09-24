@@ -28,6 +28,7 @@ import {
   makeManualResolutionOutcome,
   makeWorkflowOutcome,
   approveApiPath,
+  rejectApiPath,
   executeApiPath,
   manualResolutionApiPath,
   http,
@@ -470,5 +471,169 @@ describe("WorkflowAction — manual resolution flow", () => {
         "Manual resolution INT-0001 recorded for EXC-001529.",
       );
     });
+  });
+});
+
+describe("WorkflowAction — pending state (P8.5)", () => {
+  /** Suspend the mutation response so the pending state is
+   *  observable; release lets the flow complete for cleanup. */
+  function holdResponse(): { release: () => void } {
+    let releaseResponse: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    server.use(
+      http.post(approveApiPath(), async () => {
+        await gate;
+        return HttpResponse.json(makeWorkflowOutcome());
+      }),
+      http.post(rejectApiPath(), async () => {
+        await gate;
+        return HttpResponse.json(
+          makeWorkflowOutcome({ message: "Recovery action ACT-000001 rejected." }),
+        );
+      }),
+      http.post(manualResolutionApiPath("EXC-001529"), async () => {
+        await gate;
+        return HttpResponse.json(makeManualResolutionOutcome());
+      }),
+    );
+    return { release: releaseResponse };
+  }
+
+  it("marks the approve form aria-busy while the approval is pending", async () => {
+    const { release } = holdResponse();
+    const user = userEvent.setup();
+    renderWorkflowAction("Decision required");
+
+    await user.click(screen.getByRole("button", { name: "Approve recovery" }));
+    await user.type(screen.getByPlaceholderText("Planner name"), "P. Planner");
+    await user.click(screen.getByRole("button", { name: "Confirm approval" }));
+
+    const form = screen.getByText("Recording decision…").closest("form");
+    expect(form).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Recording decision…")).toBeDisabled();
+
+    release();
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("approved");
+    });
+  });
+
+  it("marks the reject form aria-busy while the rejection is pending", async () => {
+    const { release } = holdResponse();
+    const user = userEvent.setup();
+    renderWorkflowAction("Decision required");
+
+    await user.click(screen.getByRole("button", { name: "Reject recovery" }));
+    await user.type(screen.getByPlaceholderText("Planner name"), "P. Planner");
+    await user.click(screen.getByRole("button", { name: "Confirm rejection" }));
+
+    const form = screen.getByText("Recording decision…").closest("form");
+    expect(form).toHaveAttribute("aria-busy", "true");
+
+    release();
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("rejected");
+    });
+  });
+
+  it("marks the manual-resolution form aria-busy while recording is pending", async () => {
+    const { release } = holdResponse();
+    const user = userEvent.setup();
+    renderWorkflowAction("No system recovery available");
+
+    await user.selectOptions(screen.getByLabelText("Intervention type"), "Carrier call");
+    await user.selectOptions(screen.getByLabelText("Outcome"), "Resolved");
+    await user.type(screen.getByLabelText("External party"), "Ocean carrier ops");
+    await user.type(screen.getByLabelText("Recorded by"), "P. Planner");
+    await user.type(
+      screen.getByLabelText("Resolution summary"),
+      "Coordinated a revised delivery plan.",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Record manual resolution" }),
+    );
+
+    const form = screen.getByText("Recording…").closest("form");
+    expect(form).toHaveAttribute("aria-busy", "true");
+
+    release();
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Manual resolution INT-0001 recorded",
+      );
+    });
+  });
+
+  it("clears aria-busy and restores the submit control once the mutation resolves", async () => {
+    const user = userEvent.setup();
+    renderWorkflowAction("Decision required");
+
+    await user.click(screen.getByRole("button", { name: "Approve recovery" }));
+    await user.type(screen.getByPlaceholderText("Planner name"), "P. Planner");
+    await user.click(screen.getByRole("button", { name: "Confirm approval" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("approved");
+    });
+    const form = screen.getByText("Approving as planner").closest("form");
+    expect(form).toHaveAttribute("aria-busy", "false");
+    expect(
+      screen.getByRole("button", { name: "Confirm approval" }),
+    ).toBeEnabled();
+  });
+
+  // Live-verified P8.5 regression: after approve → execute, the
+  // banner must show the EXECUTE outcome. A bare precedence chain
+  // across the result slots keeps the stale approval message
+  // mounted forever — the sequential reality of the workflow
+  // (execute is only reachable after an approval) means every
+  // real execute followed an approval, so this was invisible to
+  // single-mutation unit tests.
+  it("shows the execute outcome, not the stale approval banner, after approve then execute", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkflowAction
+        state={makeInvestigationState({ state: "Decision required" })}
+        interventions={[]}
+        exceptionId="EXC-001529"
+        latestActionId="ACT-000001"
+      />,
+    );
+
+    // 1. Approve on the decision-state component.
+    await user.click(screen.getByRole("button", { name: "Approve recovery" }));
+    await user.type(screen.getByPlaceholderText("Planner name"), "P. Planner");
+    await user.click(screen.getByRole("button", { name: "Confirm approval" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Recovery action ACT-000001 approved successfully.",
+      );
+    });
+
+    // 2. The revalidated page renders the same hydrated component
+    //    in the new state. Rerendering with the new state mimics
+    //    the state-gate change while keeping the mounted result
+    //    slots — exactly what the live workspace does.
+    rerender(
+      <WorkflowAction
+        state={makeInvestigationState({ state: "Awaiting execution" })}
+        interventions={[]}
+        exceptionId="EXC-001529"
+        latestActionId="ACT-000001"
+      />,
+    );
+
+    // 3. Execute — the banner must switch to the execute outcome.
+    await user.click(screen.getByRole("button", { name: "Execute recovery" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Recovery executed successfully for SHP-SIM-0002.",
+      );
+    });
+    expect(screen.getByRole("status")).not.toHaveTextContent("approved");
+    // Focus follows the newest outcome (P8.4 contract preserved).
+    expect(screen.getByRole("status")).toHaveFocus();
   });
 });

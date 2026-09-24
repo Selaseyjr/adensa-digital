@@ -71,7 +71,11 @@
 html,
 body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* `clip` (not `hidden`): hidden would make the body a scroll
+     container, which breaks position:sticky for the workspace
+     section index. clip prevents horizontal overflow without
+     creating a clip-scroll box. */
+  overflow-x: clip;
 }
 
 body {
@@ -187,6 +191,11 @@ textarea:focus-visible,
 
 .app-nav a:hover {
   background: var(--neutral-chip);
+  color: var(--text);
+}
+
+.app-nav a:active {
+  background: var(--surface-sunken);
   color: var(--text);
 }
 
@@ -327,6 +336,10 @@ textarea:focus-visible,
   border-bottom: none;
 }
 
+.data-table tbody tr {
+  transition: background-color 150ms ease;
+}
+
 .data-table tbody tr:hover {
   background: #f8fafb;
 }
@@ -334,6 +347,7 @@ textarea:focus-visible,
 .queue-link {
   color: var(--accent);
   font-weight: 600;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
 }
 
 .queue-link:hover {
@@ -420,7 +434,12 @@ textarea:focus-visible,
 .skeleton-line {
   height: 12px;
   border-radius: 6px;
-  background: linear-gradient(90deg, #e7ebef 25%, #f2f5f7 50%, #e7ebef 75%);
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    var(--surface-sunken) 50%,
+    var(--border) 75%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
   margin: 10px auto;
@@ -455,7 +474,12 @@ textarea:focus-visible,
 
   .skeleton-line {
     animation: none;
-    background: linear-gradient(90deg, #e7ebef 25%, #f2f5f7 50%, #e7ebef 75%);
+    background: linear-gradient(
+      90deg,
+      var(--border) 25%,
+      var(--surface-sunken) 50%,
+      var(--border) 75%
+    );
     background-size: 100% 100%;
   }
 }
@@ -472,6 +496,7 @@ textarea:focus-visible,
 
 .breadcrumb a {
   color: var(--accent);
+  transition: color 150ms ease, text-decoration-color 150ms ease;
 }
 
 .breadcrumb a:hover {
@@ -727,6 +752,10 @@ textarea:focus-visible,
   font-size: var(--text-sm);
   color: var(--text-muted);
   border: 1px solid transparent;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
 }
 
 .workspace-index-link:hover {
@@ -743,6 +772,19 @@ textarea:focus-visible,
 
 /* Workflow progression: labelled stages, current marked with
    aria-current=step; text states are the accessible content. */
+
+/* Section anchors live under the sticky index; scroll-margin
+   keeps the targeted heading visible after anchor jumps. */
+
+#state,
+#situation,
+#decision-support,
+#history,
+#sustainability,
+#advisory,
+#workflow-action {
+  scroll-margin-top: 64px;
+}
 
 .workflow-progression {
   list-style: none;
@@ -808,7 +850,30 @@ textarea:focus-visible,
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
-  list-style-position: outside;
+  /* Deliberate disclosure marker replaces the browser's
+     default summary bullet. */
+  list-style: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.subsection-summary::-webkit-details-marker {
+  display: none;
+}
+
+.subsection-summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--text-muted);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  margin-right: 8px;
+  transition: transform 150ms ease;
+}
+
+.subsection-details[open] > .subsection-summary::before {
+  transform: rotate(90deg);
 }
 
 .subsection-summary:hover {
@@ -914,6 +979,13 @@ textarea:focus-visible,
   border-color: var(--accent-dark);
 }
 
+.action-button:active:not(:disabled) {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  /* Pressed affordance: a 1px inset darkening, no movement. */
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.25);
+}
+
 .action-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -926,6 +998,10 @@ textarea:focus-visible,
 
 .action-button-secondary:hover:not(:disabled) {
   background: var(--neutral-chip);
+}
+
+.action-button-secondary:active:not(:disabled) {
+  background: var(--surface-sunken);
 }
 
 .action-field {
@@ -946,6 +1022,12 @@ textarea:focus-visible,
   font-family: inherit;
   color: var(--text);
   background: var(--surface);
+  transition: border-color 150ms ease;
+}
+
+.action-field input:focus-visible,
+.action-field select:focus-visible {
+  border-color: var(--accent);
 }
 
 .action-field input:disabled,
@@ -1227,5 +1309,17 @@ textarea:focus-visible,
 
   .option-facts {
     gap: 16px;
+  }
+
+  /* The wrapped section index is taller when the chips stack;
+     anchors must clear the increased sticky height. */
+  #state,
+  #situation,
+  #decision-support,
+  #history,
+  #sustainability,
+  #advisory,
+  #workflow-action {
+    scroll-margin-top: 124px;
   }
 }
