@@ -1,15 +1,65 @@
+/* ==================================================
+   ADENSA DIGITAL — DESIGN FOUNDATIONS (P8.1)
+   ==================================================
+   Design language: clean, restrained, information-dense
+   enterprise operations. The palette is the audited,
+   WCAG-AA-verified scheme; this file formalizes it as
+   tokens, adds the type scale (Inter via next/font),
+   the focus/keyboard system, the reduced-motion strategy
+   and the responsive foundation — without changing any
+   component contract.
+   ================================================== */
+
 :root {
+  /* Surfaces and text */
   --bg: #f4f6f8;
   --surface: #ffffff;
+  --surface-sunken: #eef1f4;
   --border: #d9dee3;
+  --border-strong: #c3cbd3;
+
+  /* Text */
   --text: #1a2027;
   --text-muted: #5b6672;
+
+  /* Operational palette (contrast verified in the P8 audit) */
   --accent: #0f4c81;
   --accent-dark: #0b3a63;
+  --accent-tint: #eef4fa;
   --critical: #b42318;
+  --critical-tint: #fce8e6;
   --warning: #b54708;
+  --warning-tint: #fdeada;
   --ok: #067647;
-  --neutral-chip: #eef1f4;
+  --ok-tint: #e3f5ec;
+  --neutral-chip: var(--surface-sunken);
+
+  /* Typography scale (rem on a 16px root; body renders 15px) */
+  --font-ui: var(--font-inter), Arial, Helvetica, sans-serif;
+  --text-xs: 0.71875rem;   /* 11.5px — fine print, metric notes   */
+  --text-sm: 0.78125rem;   /* 12.5px — captions, meta, footers    */
+  --text-base: 0.875rem;   /* 14px  — tables, controls, chips     */
+  --text-body: 0.9375rem;  /* 15px  — body copy                   */
+  --text-section: 0.96875rem; /* 15.5px — section headings        */
+  --text-page: 1.375rem;   /* 22px  — page titles                 */
+  --text-metric: 1.625rem; /* 26px  — control-tower metrics       */
+
+  /* Spacing scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* Radius and elevation (restrained) */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --shadow-1: 0 1px 2px rgb(26 32 39 / 0.05);
+
+  /* Focus ring — the single keyboard-focus treatment */
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
 }
 
 * {
@@ -27,14 +77,55 @@ body {
 body {
   color: var(--text);
   background: var(--bg);
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 15px;
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* ==================================================
+   KEYBOARD FOCUS (global, single system)
+   ==================================================
+   Every interactive element receives the same clearly
+   visible ring when focused from the keyboard. The
+   default outline is removed only because this ring
+   replaces it at equal or higher contrast. */
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+/* ==================================================
+   SKIP LINK
+   ================================================== */
+
+.skip-link {
+  position: absolute;
+  left: var(--space-4);
+  top: -100%;
+  z-index: 100;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: var(--text-base);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.skip-link:focus-visible {
+  top: 0;
 }
 
 /* ==================================================
@@ -51,7 +142,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--space-6);
   padding: 14px 32px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -63,33 +154,46 @@ a {
 }
 
 .app-brand-name {
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 700;
   letter-spacing: 0.2px;
 }
 
 .app-brand-sub {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
-.app-nav ul {
+/* The primary navigation is the <ul class="app-nav"> itself
+   (layout.tsx renders the class on the list). Horizontal on
+   desktop, wrapping on narrow screens; the current page is
+   marked by aria-current="page" set from the router. */
+
+.app-nav {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: var(--space-1);
   list-style: none;
 }
 
 .app-nav a {
   display: inline-block;
   padding: 8px 14px;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
   color: var(--text-muted);
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .app-nav a:hover {
   background: var(--neutral-chip);
   color: var(--text);
+}
+
+.app-nav a[aria-current="page"] {
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .app-main {
@@ -105,7 +209,7 @@ a {
   border-top: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
 }
 
 /* ==================================================
@@ -113,14 +217,15 @@ a {
    ================================================== */
 
 .page-title {
-  font-size: 22px;
+  font-size: var(--text-page);
   font-weight: 700;
+  letter-spacing: -0.01em;
   margin-bottom: 4px;
 }
 
 .page-intro {
   color: var(--text-muted);
-  font-size: 13.5px;
+  font-size: 0.84375rem; /* 13.5px */
   margin-bottom: 24px;
   max-width: 72ch;
 }
@@ -128,20 +233,21 @@ a {
 .section {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
   padding: 20px 24px;
   margin-bottom: 20px;
 }
 
 .section-title {
-  font-size: 15px;
+  font-size: var(--text-section);
   font-weight: 700;
   margin-bottom: 14px;
 }
 
 .section-caption {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   margin: -8px 0 14px;
 }
 
@@ -159,26 +265,29 @@ a {
 .metric {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
   padding: 14px 16px;
 }
 
 .metric-label {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   margin-bottom: 4px;
 }
 
 .metric-value {
-  font-size: 26px;
+  font-size: var(--text-metric);
   font-weight: 700;
   line-height: 1.1;
+  /* Operational counts read as data, not prose. */
+  font-variant-numeric: tabular-nums;
 }
 
 .metric-note {
   display: block;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: 4px;
 }
@@ -194,12 +303,12 @@ a {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: 0.84375rem; /* 13.5px */
 }
 
 .data-table th {
   text-align: left;
-  font-size: 12px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--text-muted);
@@ -232,6 +341,18 @@ a {
   text-decoration: underline;
 }
 
+/* Selected work-queue row (class-based; the component marks
+   it alongside aria-current on the row's link). */
+
+.queue-row-selected {
+  background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.queue-row-selected:hover {
+  background: var(--accent-tint);
+}
+
 /* ==================================================
    CHIPS / STATUS
    ================================================== */
@@ -240,18 +361,18 @@ a {
   display: inline-block;
   padding: 2px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .chip-critical {
-  background: #fce8e6;
+  background: var(--critical-tint);
   color: var(--critical);
 }
 
 .chip-high {
-  background: #fdeada;
+  background: var(--warning-tint);
   color: var(--warning);
 }
 
@@ -261,12 +382,12 @@ a {
 }
 
 .chip-actionable {
-  background: #e3f5ec;
+  background: var(--ok-tint);
   color: var(--ok);
 }
 
 .chip-warning {
-  background: #fdeada;
+  background: var(--warning-tint);
   color: var(--warning);
 }
 
@@ -276,12 +397,12 @@ a {
 
 .state-panel {
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 28px 24px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .state-panel-strong {
@@ -315,11 +436,36 @@ a {
 }
 
 /* ==================================================
+   REDUCED MOTION (global strategy)
+   ==================================================
+   Non-essential motion is disabled for users who ask for
+   it. The skeleton degrades to a static block (still
+   distinguishable as a loading placeholder); later P8
+   motion work builds on this guard. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .skeleton-line {
+    animation: none;
+    background: linear-gradient(90deg, #e7ebef 25%, #f2f5f7 50%, #e7ebef 75%);
+    background-size: 100% 100%;
+  }
+}
+
+/* ==================================================
    INVESTIGATION WORKSPACE
    ================================================== */
 
 .breadcrumb {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin-bottom: 12px;
 }
@@ -346,7 +492,7 @@ a {
 
 .workspace-header-meta {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   margin-top: 4px;
 }
 
@@ -358,7 +504,7 @@ a {
 }
 
 .situation-description {
-  font-size: 14px;
+  font-size: 0.875rem;
   margin-bottom: 16px;
   max-width: 80ch;
 }
@@ -368,7 +514,7 @@ a {
 }
 
 .subsection-title {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 700;
   margin: 18px 0 10px;
 }
@@ -376,7 +522,7 @@ a {
 .recommended-option {
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 14px 16px;
   margin-bottom: 16px;
 }
@@ -390,7 +536,7 @@ a {
 }
 
 .recommended-option-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -403,7 +549,7 @@ a {
 
 .recommended-option-reason {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   margin-bottom: 10px;
 }
 
@@ -414,26 +560,27 @@ a {
 }
 
 .option-facts dt {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 
 .option-facts dd {
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .rationale-note {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-xs);
   margin: 8px 0 12px;
 }
 
 .trade-off-list {
   margin: 0 0 12px 20px;
-  font-size: 13.5px;
+  font-size: 0.84375rem;
 }
 
 .trade-off-list li {
@@ -441,7 +588,7 @@ a {
 }
 
 .confidence-basis {
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .history-list {
@@ -461,7 +608,7 @@ a {
 
 .history-timestamp {
   flex: 0 0 150px;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -472,7 +619,7 @@ a {
 
 .history-event {
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: 0.84375rem;
 }
 
 .history-actor {
@@ -481,7 +628,7 @@ a {
 }
 
 .history-detail {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-muted);
 }
 
@@ -490,12 +637,12 @@ a {
 }
 
 .workflow-state-line {
-  font-size: 14px;
+  font-size: 0.875rem;
   margin-bottom: 6px;
 }
 
 .workflow-next-step {
-  font-size: 14px;
+  font-size: 0.875rem;
   margin: 10px 0 14px;
 }
 
@@ -512,27 +659,21 @@ a {
 }
 
 .advisory-text {
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   margin-bottom: 10px;
   max-width: 85ch;
 }
 
 .advisory-disclaimer {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: 12px;
 }
 
 .advisory-provider {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: 4px;
-}
-
-@media (max-width: 720px) {
-  .history-timestamp {
-    flex-basis: 100px;
-  }
 }
 
 /* ==================================================
@@ -542,9 +683,9 @@ a {
 .action-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: flex-end;
-  margin-top: 0.75rem;
+  margin-top: var(--space-3);
 }
 
 .action-button {
@@ -553,9 +694,11 @@ a {
   background: var(--accent);
   color: #ffffff;
   padding: 0.45rem 0.9rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  font-family: inherit;
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
 }
 
 .action-button:hover:not(:disabled) {
@@ -580,7 +723,7 @@ a {
 .action-field {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
   font-size: 0.8125rem;
   color: var(--text-muted);
   min-width: 180px;
@@ -589,9 +732,10 @@ a {
 .action-field input,
 .action-field select {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0.4rem 0.55rem;
-  font-size: 0.875rem;
+  font-size: var(--text-base);
+  font-family: inherit;
   color: var(--text);
   background: var(--surface);
 }
@@ -605,15 +749,78 @@ a {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.6rem;
-  margin-top: 0.75rem;
+  margin-top: var(--space-3);
 }
 
 .action-result-banner {
-  margin-top: 0.75rem;
+  margin-top: var(--space-3);
   padding: 0.5rem 0.75rem;
   border: 1px solid;
-  border-radius: 6px;
-  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
   background: var(--surface);
   flex-basis: 100%;
+}
+
+/* ==================================================
+   RESPONSIVE FOUNDATION
+   ==================================================
+   Three deliberate widths: full desktop, a mid-width
+   comfort point where the header relaxes, and a narrow
+   tier where the shell stacks. Tables keep their
+   horizontal-scroll wrapper until the later responsive
+   table strategy lands. */
+
+@media (max-width: 1024px) {
+  .app-main {
+    padding: 24px 24px 40px;
+  }
+
+  .app-header {
+    padding: 12px 24px;
+  }
+
+  .app-footer {
+    padding: 12px 24px;
+  }
+}
+
+@media (max-width: 720px) {
+  .history-timestamp {
+    flex-basis: 100px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+
+  .app-nav {
+    gap: 2px;
+  }
+
+  .app-main {
+    padding: 20px 16px 36px;
+  }
+
+  .app-footer {
+    padding: 12px 16px;
+  }
+
+  .section {
+    padding: 16px;
+  }
+
+  .action-field {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .option-facts {
+    gap: 16px;
+  }
 }

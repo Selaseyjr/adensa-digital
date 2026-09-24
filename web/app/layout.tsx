@@ -3,11 +3,23 @@
  * operational navigation frame around the product surfaces.
  * Streamlit-free by design — this is the production-style
  * client consuming the /v1 API boundary (ADR-011).
+ *
+ * P8.1 foundations: Inter via next/font (self-hosted at build
+ * time, exposed as the --font-inter variable the type scale
+ * consumes), an accessible skip link to the main content, and
+ * the primary navigation with an active-page treatment.
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import { AppNav } from "@/components/AppNav";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "Adensa Digital — Operational Control Tower",
@@ -15,21 +27,17 @@ export const metadata: Metadata = {
     "Supply-chain exception detection, decision support and recovery workflow.",
 };
 
-const NAV_ITEMS = [
-  { href: "/", label: "Control Tower" },
-  { href: "/exceptions", label: "Exceptions" },
-  { href: "/operations", label: "Operations" },
-  { href: "/administration", label: "Administration" },
-] as const;
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <body>
+        <a className="skip-link" href="#main-content">
+          Skip to main content
+        </a>
         <div className="app-shell">
           <header className="app-header">
             <div className="app-brand">
@@ -37,16 +45,12 @@ export default function RootLayout({
               <span className="app-brand-sub">Supply-chain operations</span>
             </div>
             <nav aria-label="Primary">
-              <ul className="app-nav">
-                {NAV_ITEMS.map((item) => (
-                  <li key={item.href}>
-                    <Link href={item.href}>{item.label}</Link>
-                  </li>
-                ))}
-              </ul>
+              <AppNav />
             </nav>
           </header>
-          <main className="app-main">{children}</main>
+          <main className="app-main" id="main-content">
+            {children}
+          </main>
           <footer className="app-footer">
             Adensa Digital — operational decision support. Recommendations are
             decision support; planners approve every recovery.

@@ -57,11 +57,7 @@ export function ExceptionInboxTable({
             return (
               <tr
                 key={row.exception_id}
-                style={
-                  isSelected
-                    ? { background: "#eef4fa", outline: "1px solid var(--accent)" }
-                    : undefined
-                }
+                className={isSelected ? "queue-row-selected" : undefined}
               >
                 <td>
                   <Link
