@@ -6,6 +6,7 @@
 
 import type { ControlTowerFollowUpEntry } from "@/lib/types/api";
 import { SeverityChip } from "@/components/SeverityChip";
+import { FollowUpDelayIndicator } from "@/components/control-tower/FollowUpDelayIndicator";
 
 export function FollowUpTable({ entries }: { entries: ControlTowerFollowUpEntry[] }) {
   if (entries.length === 0) {
@@ -35,8 +36,15 @@ export function FollowUpTable({ entries }: { entries: ControlTowerFollowUpEntry[
               <td>{entry.exception_type}</td>
               <td>{entry.executed_at ?? "—"}</td>
               <td>
-                {entry.estimated_arrival ?? "—"} vs{" "}
-                {entry.required_delivery_date}
+                <span className="eta-required-text">
+                  {entry.estimated_arrival ?? "—"} vs{" "}
+                  {entry.required_delivery_date}
+                </span>
+                <FollowUpDelayIndicator
+                  anchorDate={entry.executed_at ?? entry.detected_at}
+                  estimatedArrival={entry.estimated_arrival}
+                  requiredDeliveryDate={entry.required_delivery_date}
+                />
               </td>
               <td>{entry.reason}</td>
             </tr>

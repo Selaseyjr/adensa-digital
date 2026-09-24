@@ -825,6 +825,137 @@ textarea:focus-visible,
 }
 
 /* ==================================================
+   CONTROL TOWER — COMPOSITION & DELAY (P8.3)
+   ==================================================
+   Current-state proportions subordinate to the KPI grid's
+   verbatim numbers: segmented bands (flex, token colors) and
+   a supplementary late-window marker. Presentation-level
+   arithmetic renders proportions only; every count stays in
+   visible/aria text. The one-shot reveal is transform/opacity
+   only and is neutralized by the P8.1 reduced-motion guard. */
+
+.composition-band {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.band-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.band-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.band-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.band-counts {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.band-track {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+
+.band-segment {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  animation: band-reveal 200ms ease-out both;
+}
+
+.band-segment-empty {
+  flex: 1 1 100%;
+}
+
+.band-segment-actionable {
+  background: var(--accent);
+}
+
+.band-segment-monitoring {
+  background: var(--border-strong);
+}
+
+.band-segment-critical {
+  background: var(--critical);
+}
+
+@keyframes band-reveal {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Follow-up late window: supplementary visual in the ETA vs
+   Required cell. aria-hidden; the dates and the API's reason
+   text are the accessible content. */
+
+.delay-indicator {
+  display: block;
+  margin-top: var(--space-1);
+}
+
+.delay-indicator-track {
+  position: relative;
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  border: 1px solid var(--border);
+}
+
+.delay-indicator-late {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--warning);
+}
+
+.delay-indicator-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--critical);
+}
+
+.delay-indicator-caption {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.eta-required-text {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ==================================================
    RESPONSIVE FOUNDATION
    ==================================================
    Three deliberate widths: full desktop, a mid-width

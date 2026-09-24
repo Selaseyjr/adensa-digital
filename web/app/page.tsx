@@ -20,6 +20,7 @@ import {
   UnavailablePanel,
 } from "@/components/StatePanels";
 import { ControlTowerMetrics } from "@/components/control-tower/ControlTowerMetrics";
+import { QueueCompositionBand } from "@/components/control-tower/QueueCompositionBand";
 import { FollowUpTable } from "@/components/control-tower/FollowUpTable";
 import { RecentlyResolvedTable } from "@/components/control-tower/RecentlyResolvedTable";
 
@@ -39,6 +40,17 @@ async function ControlTower() {
       return (
         <>
           <ControlTowerMetrics summary={result.data} />
+          <section className="section" aria-labelledby="composition-title">
+            <h2 id="composition-title" className="section-title">
+              Queue Composition
+            </h2>
+            <p className="section-caption">
+              Proportions of the counts above, at the current snapshot —
+              the bounded work-queue split and the critical share of the
+              open population. No history is implied.
+            </p>
+            <QueueCompositionBand summary={result.data} />
+          </section>
           <section className="section" aria-labelledby="follow-up-title">
             <h2 id="follow-up-title" className="section-title">
               Follow-up Required
