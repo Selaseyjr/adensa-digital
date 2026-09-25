@@ -445,10 +445,18 @@ export type AnalyticsCategoricalEntry =
   | AnalyticsWarehouseEntry
   | AnalyticsSeverityEntry;
 
-export interface AnalyticsCategoricalSeries {
+/** A categorical series carrying one concrete entry shape —
+ * the backend (P8.7.1) defines a distinct Pydantic model per
+ * series, so the mirror types each series precisely instead of
+ * widening every consumer to the union. */
+export interface AnalyticsCategoricalSeriesFor<E extends object> {
   basis: string;
-  entries: AnalyticsCategoricalEntry[];
+  entries: E[];
 }
+
+/** The union-typed form, kept for generic validation code. */
+export type AnalyticsCategoricalSeries =
+  AnalyticsCategoricalSeriesFor<AnalyticsCategoricalEntry>;
 
 export interface AnalyticsServicePerformanceSeries {
   basis: string;
@@ -470,10 +478,10 @@ export interface AnalyticsOverview {
   service_performance: AnalyticsServicePerformanceSeries;
   exception_incidence: AnalyticsIncidenceSeries;
   shipment_volume: AnalyticsVolumeSeries;
-  transport: AnalyticsCategoricalSeries;
-  carriers: AnalyticsCategoricalSeries;
-  warehouses: AnalyticsCategoricalSeries;
-  severity: AnalyticsCategoricalSeries;
+  transport: AnalyticsCategoricalSeriesFor<AnalyticsTransportEntry>;
+  carriers: AnalyticsCategoricalSeriesFor<AnalyticsCarrierEntry>;
+  warehouses: AnalyticsCategoricalSeriesFor<AnalyticsWarehouseEntry>;
+  severity: AnalyticsCategoricalSeriesFor<AnalyticsSeverityEntry>;
 }
 
 // ==================================================

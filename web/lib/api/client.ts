@@ -22,15 +22,18 @@
  */
 
 import type {
-  AnalyticsCategoricalEntry,
-  AnalyticsCategoricalSeries,
+  AnalyticsCategoricalSeriesFor,
+  AnalyticsCarrierEntry,
   AnalyticsIncidencePoint,
   AnalyticsIncidenceSeries,
   AnalyticsOverview,
   AnalyticsServicePerformancePoint,
   AnalyticsServicePerformanceSeries,
+  AnalyticsSeverityEntry,
+  AnalyticsTransportEntry,
   AnalyticsVolumePoint,
   AnalyticsVolumeSeries,
+  AnalyticsWarehouseEntry,
   ApiErrorBody,
   ControlTowerSummary,
   DecisionBrief,
@@ -663,30 +666,41 @@ function validateAnalyticsOverview(payload: unknown): AnalyticsOverview | null {
     return typeof value === "number" ? value : undefined;
   };
 
-  const parseCategoricalSeries = (
+  /** Per-series field specs: the backend defines a distinct
+   * Pydantic model per categorical series, so validation is
+   * exact per series rather than a loose pass-through union. */
+  const parseCategoricalSeries = <
+    E extends object,
+  >(
     value: unknown,
-  ): AnalyticsCategoricalSeries | null => {
+    spec: Record<string, "string" | "number" | "rate">,
+  ): AnalyticsCategoricalSeriesFor<E> | null => {
     if (!isRecord(value) || typeof value.basis !== "string") return null;
     if (!Array.isArray(value.entries)) return null;
-    const entries: AnalyticsCategoricalEntry[] = [];
+    const entries: E[] = [];
     for (const raw of value.entries) {
       if (!isRecord(raw)) return null;
-      // Entries pass through structurally for now: their
-      // per-field charts arrive in P8.7.3, so only the series
-      // envelope and primitive field types are guaranteed here.
       const entry: Record<string, unknown> = {};
-      for (const [key, field] of Object.entries(raw)) {
-        if (
-          typeof field === "string" ||
-          typeof field === "number" ||
-          field === null
-        ) {
-          entry[key] = field;
-        } else {
+      // Exactly the spec fields, typed exactly as specified —
+      // anything missing, extra, or wrongly typed is a contract
+      // violation and fails the whole series.
+      for (const [key, kind] of Object.entries(spec)) {
+        const field = raw[key];
+        if (kind === "rate") {
+          const rate = parseRate(field);
+          if (rate === undefined) return null;
+          entry[key] = rate;
+        } else if (typeof field !== kind) {
           return null;
+        } else {
+          entry[key] = field;
         }
       }
-      entries.push(entry as unknown as AnalyticsCategoricalEntry);
+      if (Object.keys(raw).length !== Object.keys(spec).length) return null;
+      // The record just passed the exact per-series spec above;
+      // the bridge to E is the same narrow assertion the
+      // previous pass-through validator performed.
+      entries.push(entry as unknown as E);
     }
     return { basis: value.basis, entries };
   };
@@ -763,10 +777,40 @@ function validateAnalyticsOverview(payload: unknown): AnalyticsOverview | null {
       ),
   };
 
-  const transport = parseCategoricalSeries(payload.transport);
-  const carriers = parseCategoricalSeries(payload.carriers);
-  const warehouses = parseCategoricalSeries(payload.warehouses);
-  const severity = parseCategoricalSeries(payload.severity);
+  const transport = parseCategoricalSeries<AnalyticsTransportEntry>(
+    payload.transport,
+    {
+      transport_mode: "string",
+      delivered: "number",
+      on_time: "number",
+      on_time_rate: "rate",
+    },
+  );
+  const carriers = parseCategoricalSeries<AnalyticsCarrierEntry>(
+    payload.carriers,
+    {
+      carrier_id: "string",
+      carrier_name: "string",
+      delivered: "number",
+      on_time: "number",
+      on_time_rate: "rate",
+    },
+  );
+  const warehouses = parseCategoricalSeries<AnalyticsWarehouseEntry>(
+    payload.warehouses,
+    {
+      warehouse_id: "string",
+      warehouse_name: "string",
+      exceptions: "number",
+    },
+  );
+  const severity = parseCategoricalSeries<AnalyticsSeverityEntry>(
+    payload.severity,
+    {
+      severity: "string",
+      exceptions: "number",
+    },
+  );
   if (!transport || !carriers || !warehouses || !severity) return null;
 
   return {

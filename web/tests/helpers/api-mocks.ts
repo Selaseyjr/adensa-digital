@@ -497,6 +497,14 @@ export function makeAnalyticsOverview(
       basis: "Delivered shipments by transport mode",
       entries: [
         { transport_mode: "Road", delivered: 700, on_time: 520, on_time_rate: 74.3 },
+        { transport_mode: "Sea", delivered: 450, on_time: 267, on_time_rate: 59.3 },
+        { transport_mode: "Air", delivered: 220, on_time: 160, on_time_rate: 72.7 },
+        {
+          transport_mode: "Rail",
+          delivered: 0,
+          on_time: 0,
+          on_time_rate: null,
+        },
       ],
     },
     carriers: {
@@ -509,12 +517,29 @@ export function makeAnalyticsOverview(
           on_time: 220,
           on_time_rate: 73.3,
         },
+        {
+          carrier_id: "CAR-002",
+          carrier_name: "Baltic Line",
+          delivered: 180,
+          on_time: 141,
+          on_time_rate: 78.3,
+        },
+        {
+          carrier_id: "CAR-003",
+          carrier_name: "Iberia Cargo",
+          delivered: 120,
+          on_time: 88,
+          on_time_rate: 73.3,
+        },
       ],
     },
     warehouses: {
       basis: "Exceptions by origin warehouse",
       entries: [
         { warehouse_id: "WH-01", warehouse_name: "Rotterdam Hub", exceptions: 120 },
+        { warehouse_id: "WH-02", warehouse_name: "Hamburg Gateway", exceptions: 96 },
+        { warehouse_id: "WH-03", warehouse_name: "Antwerp Depot", exceptions: 74 },
+        { warehouse_id: "WH-04", warehouse_name: "Munich Cross-dock", exceptions: 0 },
       ],
     },
     severity: {

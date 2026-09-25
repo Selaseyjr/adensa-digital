@@ -34,6 +34,13 @@
   --ok-tint: #e3f5ec;
   --neutral-chip: var(--surface-sunken);
 
+  /* Analytical series identities (P8.7.3): one hue per data
+     class, never per variable — time-series rates render in
+     the audited accent, categorical comparisons in the audited
+     success green. */
+  --series-rate: var(--accent);
+  --series-categorical: var(--ok);
+
   /* Typography scale (rem on a 16px root; body renders 15px) */
   --font-ui: var(--font-inter), Arial, Helvetica, sans-serif;
   --text-xs: 0.71875rem;   /* 11.5px — fine print, metric notes   */
@@ -1387,14 +1394,14 @@ textarea:focus-visible,
 }
 
 .chart-path {
-  stroke: var(--accent);
+  stroke: var(--series-rate);
   stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 
 .chart-dot {
-  fill: var(--accent);
+  fill: var(--series-rate);
 }
 
 .chart-axis-label {
@@ -1408,12 +1415,14 @@ textarea:focus-visible,
 }
 
 @keyframes chart-reveal {
+  /* No explicit `to`: the animation resolves toward the
+     element's own cascade value, so a muted panel (0.45) and a
+     focused panel (1) both land correctly. An explicit
+     `to { opacity: 1 }` plus fill-mode `both` would pin the
+     figure at full opacity forever and silently defeat the
+     P8.7.3 muted state. */
   from {
     opacity: 0;
-  }
-
-  to {
-    opacity: 1;
   }
 }
 
@@ -1421,4 +1430,121 @@ textarea:focus-visible,
   .analytics-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==================================================
+   ANALYTICAL SELECTION (P8.7.3)
+   ==================================================
+   Single-focus variable selector: native radios inside a
+   fieldset, rendered as wrapping chips. The selected panel
+   keeps full emphasis with a stronger border; every other
+   analytical panel recedes to 0.45 opacity on its figure
+   content only — headers stay readable so a muted panel can
+   still be read and chosen next. No blur, no scale, no
+   decoration; transitions reuse the 150ms P8.5 pattern and
+   are neutralized by the global reduced-motion guard. */
+
+.analytics-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+
+.analytics-chip {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The native radio stays in the accessibility tree and
+   keyboard-focusable; the chip face is the visible control,
+   so the global focus ring moves to it. */
+.analytics-chip input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.analytics-chip input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.analytics-chip input:focus-visible + span {
+  box-shadow: var(--focus-ring);
+}
+
+.analytics-chip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: 1.2;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.analytics-chip:hover span {
+  background: var(--surface-sunken);
+}
+
+.analytics-chip input:checked + span {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
+.analytics-panel.is-focused {
+  border-color: var(--accent);
+}
+
+.analytics-panel .analytics-context,
+.analytics-panel .analytics-empty-note,
+.analytics-panel .chart-figure {
+  transition: opacity 150ms ease;
+}
+
+.analytics-panel.is-muted .analytics-context,
+.analytics-panel.is-muted .analytics-empty-note,
+.analytics-panel.is-muted .chart-figure {
+  opacity: 0.45;
+}
+
+/* Categorical bars: track + fill + value text, bound to the
+   categorical series identity. Category labels render at body
+   strength; values stay secondary. */
+.bar-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.bar-track {
+  stroke: var(--surface-sunken);
+  stroke-width: 18;
+}
+
+.bar-fill {
+  fill: var(--series-categorical);
+}
+
+.bar-category-label {
+  fill: var(--text);
+  font-size: 11.5px;
+}
+
+.bar-value-label {
+  fill: var(--text-muted);
 }

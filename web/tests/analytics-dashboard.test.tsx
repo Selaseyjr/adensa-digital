@@ -1,8 +1,10 @@
 /**
- * P8.7.2 tests: the analytical layer on the Control Tower —
- * the LineChart SVG primitive, the AnalyticsSection panels
- * fed by the real `/v1/analytics/overview` contract (P8.7.1),
- * and the client function's four result states.
+ * Analytical-layer tests (P8.7.2 + P8.7.3): the LineChart and
+ * BarChart SVG primitives, the AnalyticsSection panels fed by
+ * the real `/v1/analytics/overview` contract (P8.7.1), the
+ * client function's four result states, the single-focus
+ * variable selection, and the strict per-series categorical
+ * validation.
  *
  * Test architecture note (matching the suite's established
  * pattern): jsdom cannot render async Server Components, so
@@ -22,11 +24,13 @@
  */
 
 import { afterEach, beforeAll, afterAll, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
 import { AnalyticsSection } from "@/components/control-tower/AnalyticsSection";
 import { LineChart } from "@/components/control-tower/LineChart";
+import { BarChart } from "@/components/control-tower/BarChart";
 import { getAnalyticsOverview } from "@/lib/api/client";
 import {
   analyticsPath,
@@ -450,5 +454,359 @@ describe("LineChart primitive", () => {
       />,
     );
     expect(screen.getByRole("cell", { name: "42 pt" })).toBeInTheDocument();
+  });
+});
+
+describe("BarChart primitive (P8.7.3)", () => {
+  const barBase = {
+    titleId: "transport-heading",
+    describedById: "transport-basis",
+    valueLabel: "On-time rate",
+  };
+
+  it("renders category labels and API values verbatim", () => {
+    render(
+      <BarChart
+        {...barBase}
+        entries={[
+          { label: "Road", value: 74.3 },
+          { label: "Sea", value: 59.3 },
+        ]}
+      />,
+    );
+    const table = screen.getByRole("table", {
+      name: /On-time rate by category/i,
+    });
+    expect(table).toHaveTextContent("Road");
+    expect(table).toHaveTextContent("74.3%");
+    expect(table).toHaveTextContent("Sea");
+    expect(table).toHaveTextContent("59.3%");
+  });
+
+  it("keeps the role=img / labelled / described accessibility contract", () => {
+    const { container } = render(
+      <BarChart {...barBase} entries={[{ label: "Road", value: 74.3 }]} />,
+    );
+    const svg = container.querySelector("svg[role='img']");
+    expect(svg).not.toBeNull();
+    expect(svg).toHaveAttribute(
+      "aria-labelledby",
+      "transport-heading transport-basis",
+    );
+  });
+
+  it("renders No observation for a null rate and draws no bar", () => {
+    const { container } = render(
+      <BarChart {...barBase} entries={[{ label: "Rail", value: null }]} />,
+    );
+    // The category still renders; the value is "No observation"
+    // (in both the SVG value label and the fallback table), never
+    // a fabricated 0%, and no bar length is invented.
+    expect(screen.getAllByText("No observation")).toHaveLength(2);
+    expect(container.querySelector(".bar-fill")).toBeNull();
+    expect(container.querySelector("svg")?.textContent).not.toContain("0%");
+  });
+
+  it("renders count series with the custom formatter (no unit)", () => {
+    render(
+      <BarChart
+        {...barBase}
+        valueLabel="Exceptions"
+        unit=""
+        formatValue={(v) => v.toLocaleString("en-US")}
+        entries={[
+          { label: "Rotterdam Hub", value: 120 },
+          { label: "Munich Cross-dock", value: 0 },
+        ]}
+      />,
+    );
+    const table = screen.getByRole("table", {
+      name: /Exceptions by category/i,
+    });
+    expect(table).toHaveTextContent("120");
+    expect(table).toHaveTextContent("Munich Cross-dock");
+  });
+
+  it("renders nothing (and no empty svg) for zero entries", () => {
+    const { container } = render(<BarChart {...barBase} entries={[]} />);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("AnalyticsSection — variable selection (P8.7.3)", () => {
+  it("renders the default Service performance | Exception incidence state", () => {
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    expect(
+      screen.getByRole("heading", { name: "Service performance" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Exception incidence" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Transport" })).toBeNull();
+
+    // Exactly two charts render — the slots never mount six.
+    expect(document.querySelectorAll("svg[role='img']")).toHaveLength(2);
+    // The default focused panel is Service performance; the
+    // other analytical panel is muted, not removed.
+    const focused = document.querySelectorAll(".analytics-panel.is-focused");
+    expect(focused).toHaveLength(1);
+    expect(focused[0]).toHaveTextContent("Service performance");
+    expect(document.querySelector(".analytics-panel.is-muted")).not.toBeNull();
+  });
+
+  it("exposes the selector as a labelled radio group of six variables", () => {
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    const group = screen.getByRole("group", {
+      name: "Select the analytical focus",
+    });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios).toHaveLength(6);
+    expect(radios.map((r) => r.closest("label")?.textContent)).toEqual([
+      "Service performance",
+      "Shipment volume",
+      "Exception incidence",
+      "Transport",
+      "Carriers",
+      "Warehouses",
+    ]);
+    expect(radios[0]).toBeChecked();
+  });
+
+  it("places a selected categorical variable into the right slot and mutes the left panel", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Transport" }));
+
+    // Slot assignment: Transport takes the right slot; the left
+    // slot falls back to its Service performance default.
+    expect(
+      screen.getByRole("heading", { name: "Transport" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Service performance" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Exception incidence" }),
+    ).toBeNull();
+
+    // Focus/dim: exactly one focused panel (Transport); the
+    // Service performance panel is muted, still in the DOM.
+    const focused = document.querySelectorAll(".analytics-panel.is-focused");
+    expect(focused).toHaveLength(1);
+    expect(focused[0]).toHaveTextContent("Transport");
+    const muted = document.querySelectorAll(".analytics-panel.is-muted");
+    expect(muted).toHaveLength(1);
+    expect(muted[0]).toHaveTextContent("Service performance");
+  });
+
+  it("keeps the right-slot default (Exception incidence) when a left variable is selected", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Shipment volume" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Shipment volume" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Exception incidence" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Transport" })).toBeNull();
+  });
+
+  it("displaces the right slot to Transport when Exception incidence itself is selected", async () => {
+    // Exception incidence initially renders in the right panel
+    // but belongs to the left slot's service-class group; selecting
+    // it must move it to the left slot and displace the right
+    // slot to that group's default (Transport) — never duplicate
+    // the same variable into both panels.
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Exception incidence" }));
+
+    const panels = document.querySelectorAll(".analytics-panel");
+    expect(panels).toHaveLength(2);
+    expect(panels[0]).toHaveTextContent("Exception incidence");
+    expect(panels[1]).toHaveTextContent("Transport");
+    expect(panels[0]).toHaveClass("is-focused");
+    expect(panels[1]).toHaveClass("is-muted");
+    // Exactly one Exception incidence heading exists.
+    expect(
+      screen.getAllByRole("heading", { name: "Exception incidence" }),
+    ).toHaveLength(1);
+  });
+
+  it("renders Transport from API values verbatim with basis wording", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Transport" }));
+
+    const table = screen.getByRole("table", {
+      name: /On-time rate by category/i,
+    });
+    expect(table).toHaveTextContent("Road");
+    expect(table).toHaveTextContent("74.3%");
+    // Basis wording verbatim from the API contract.
+    expect(
+      screen.getAllByText("Delivered shipments by transport mode").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("renders Warehouses with count formatting and all entries", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Warehouses" }));
+
+    const table = screen.getByRole("table", {
+      name: /Exceptions by category/i,
+    });
+    expect(table).toHaveTextContent("Rotterdam Hub");
+    expect(table).toHaveTextContent("120");
+    expect(table).toHaveTextContent("Munich Cross-dock");
+  });
+
+  it("renders the categorical null rate as an explicit gap (zero denominator)", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Transport" }));
+
+    const table = screen.getByRole("table", {
+      name: /On-time rate by category/i,
+    });
+    expect(table).toHaveTextContent("Rail");
+    expect(table).toHaveTextContent("No observation");
+  });
+
+  it("supports keyboard arrow navigation across the radio group", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Service performance" }));
+    await user.keyboard("{ArrowDown}");
+
+    // Native radio semantics: ArrowDown moves to the next radio
+    // in the group and selects it.
+    expect(
+      screen.getByRole("radio", { name: "Shipment volume" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("heading", { name: "Shipment volume" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders Shipment volume from API values without recomputation", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Shipment volume" }));
+
+    const table = screen.getByRole("table", { name: /Shipments by month/i });
+    expect(table).toHaveTextContent("542");
+    expect(table).toHaveTextContent("488");
+    expect(
+      screen.getAllByText("All shipments by planned-departure month").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("keeps unselected analytical content in the DOM (muted, not removed)", async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsSection overview={makeAnalyticsOverview()} />);
+
+    await user.click(screen.getByRole("radio", { name: "Carriers" }));
+
+    const panels = document.querySelectorAll(".analytics-panel");
+    expect(panels).toHaveLength(2);
+    expect(
+      screen.getByRole("heading", { name: "Carriers" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Service performance" }),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".analytics-panel.is-muted")).not.toBeNull();
+  });
+});
+
+describe("getAnalyticsOverview — strict categorical validation (P8.7.3)", () => {
+  // The P8.7.3 validator validates each categorical series
+  // against its exact backend field spec. These cases pin the
+  // fail-closed behaviour introduced alongside the per-series
+  // typing.
+  const mutatePayload = (
+    mutate: (p: Record<string, unknown>) => void,
+  ): Record<string, unknown> => {
+    const p = makeAnalyticsOverview() as unknown as Record<string, unknown>;
+    mutate(p);
+    return p;
+  };
+
+  it("accepts a valid nullable rate entry", async () => {
+    server.use(
+      http.get(analyticsPath, () =>
+        HttpResponse.json(mutatePayload(() => {})),
+      ),
+    );
+    const r = await getAnalyticsOverview();
+    expect(r.kind).toBe("data");
+    if (r.kind === "data") {
+      const rail = r.data.transport.entries.find(
+        (e) => e.transport_mode === "Rail",
+      );
+      expect(rail?.on_time_rate).toBeNull();
+    }
+  });
+
+  it("rejects a missing field", async () => {
+    server.use(
+      http.get(analyticsPath, () =>
+        HttpResponse.json(mutatePayload((p) => {
+          const t = p.transport as { entries: Record<string, unknown>[] };
+          delete t.entries[0].delivered;
+        })),
+      ),
+    );
+    expect((await getAnalyticsOverview()).kind).toBe("unexpected");
+  });
+
+  it("rejects an unexpected extra field", async () => {
+    server.use(
+      http.get(analyticsPath, () =>
+        HttpResponse.json(mutatePayload((p) => {
+          const s = p.severity as { entries: Record<string, unknown>[] };
+          s.entries[0].sneaky = 1;
+        })),
+      ),
+    );
+    expect((await getAnalyticsOverview()).kind).toBe("unexpected");
+  });
+
+  it("rejects an incorrect field type", async () => {
+    server.use(
+      http.get(analyticsPath, () =>
+        HttpResponse.json(mutatePayload((p) => {
+          const w = p.warehouses as { entries: Record<string, unknown>[] };
+          w.entries[0].exceptions = "120";
+        })),
+      ),
+    );
+    expect((await getAnalyticsOverview()).kind).toBe("unexpected");
+  });
+
+  it("rejects a non-numeric non-null rate", async () => {
+    server.use(
+      http.get(analyticsPath, () =>
+        HttpResponse.json(mutatePayload((p) => {
+          const t = p.transport as { entries: Record<string, unknown>[] };
+          t.entries[0].on_time_rate = "74.3";
+        })),
+      ),
+    );
+    expect((await getAnalyticsOverview()).kind).toBe("unexpected");
   });
 });
