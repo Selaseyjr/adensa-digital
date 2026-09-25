@@ -67,7 +67,9 @@ export function ControlTowerMetrics({ summary }: Props) {
       </Link>
       <Link className="metric" href="/exceptions?severity=Critical">
         <span className="metric-label">Critical Open</span>
-        <span className="metric-value">{summary.critical_exceptions}</span>
+        <span className="metric-value metric-value-critical">
+          {summary.critical_exceptions}
+        </span>
         <span className="metric-note">Full population</span>
       </Link>
       <Link className="metric" href="/exceptions?verdict=actionable">

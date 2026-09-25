@@ -11,19 +11,31 @@
    ================================================== */
 
 :root {
-  /* Surfaces and text */
-  --bg: #f4f6f8;
+  /* Surfaces and text (P8.9: deepened ground + subtle elevated
+     surface; all values contrast-validated against WCAG AA). */
+  --bg: #eef1f5;
   --surface: #ffffff;
+  --surface-subtle: #f8fafb;
   --surface-sunken: #eef1f4;
   --border: #d9dee3;
   --border-strong: #c3cbd3;
 
-  /* Text */
+  /* Text ramp: primary / secondary / tertiary / muted.
+     --text-secondary and --text-tertiary formalize the P8.9
+     audit ramp (#5b6672 passes AA on white and --bg; #626c79
+     is the nearest tertiary that passes on both). */
   --text: #1a2027;
+  --text-secondary: #5b6672;
+  --text-tertiary: #626c79;
   --text-muted: #5b6672;
 
-  /* Operational palette (contrast verified in the P8 audit) */
+  /* Operational palette (contrast verified in the P8 audit;
+     --accent-strong validated in P8.9: AA as text on white,
+     tint and subtle surfaces; non-text (rails, strokes, rings)
+     everywhere). On the page background, prefer --accent for
+     normal text and reserve --accent-strong for non-text. */
   --accent: #0f4c81;
+  --accent-strong: #1d6fb8;
   --accent-dark: #0b3a63;
   --accent-tint: #eef4fa;
   --critical: #b42318;
@@ -38,7 +50,7 @@
      class, never per variable — time-series rates render in
      the audited accent, categorical comparisons in the audited
      success green. */
-  --series-rate: var(--accent);
+  --series-rate: var(--accent-strong);
   --series-categorical: var(--ok);
 
   /* Typography scale (rem on a 16px root; body renders 15px) */
@@ -47,8 +59,8 @@
   --text-sm: 0.78125rem;   /* 12.5px — captions, meta, footers    */
   --text-base: 0.875rem;   /* 14px  — tables, controls, chips     */
   --text-body: 0.9375rem;  /* 15px  — body copy                   */
-  --text-section: 0.96875rem; /* 15.5px — section headings        */
-  --text-page: 1.375rem;   /* 22px  — page titles                 */
+  --text-section: 1.0625rem; /* 17px — section headings           */
+  --text-page: 1.5rem;     /* 24px  — page titles                 */
   --text-metric: 1.625rem; /* 26px  — control-tower metrics       */
 
   /* Spacing scale */
@@ -64,6 +76,12 @@
   --radius-sm: 6px;
   --radius: 8px;
   --shadow-1: 0 1px 2px rgb(26 32 39 / 0.05);
+  --shadow-2: 0 1px 2px rgb(26 32 39 / 0.06), 0 2px 6px rgb(26 32 39 / 0.06);
+
+  /* P8.9: the previously hard-coded repeated values. */
+  --row-hover: var(--surface-subtle);
+  --error-border: #f0b3ad;
+  --error-surface: #fff8f7;
 
   /* Focus ring — the single keyboard-focus treatment */
   --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
@@ -97,6 +115,27 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* ==================================================
+   VISUALLY HIDDEN (P8.9)
+   ==================================================
+   Removed from view and from the reading flow while staying
+   fully available to assistive technology (and findable via
+   find-in-page) — unlike `display: none`, which would remove
+   the chart data-table fallbacks from AT entirely. The chart
+   components' accessible fallback tables depend on this. */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ==================================================
@@ -278,45 +317,43 @@ textarea:focus-visible,
   margin-bottom: 20px;
 }
 
-/* P8.8: KPI cards that carry a truthful Inbox deep-link are
-   semantic anchors styled to keep the original card shape;
-   the underline affordance is suppressed so it doesn't fight
-   the card, while hover/focus-visible keep visible treatment
-   for keyboard and pointer users. */
-.metric-link {
+/* P8.9: KPI cards are themselves the semantic anchors (P8.8
+   links). The 2px accent top rail is the card's identity;
+   hover strengthens the rail to --accent-strong (validated as
+   a non-text accent) and shifts the label toward accent.
+   Keyboard focus keeps the global ring. */
+.metric {
   display: block;
   color: inherit;
   text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1), inset 0 2px 0 var(--accent);
+  padding: 14px 16px;
+  transition: box-shadow 150ms ease, border-color 150ms ease;
 }
 
-.metric-link:hover .metric-label {
+.metric:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-1), inset 0 2px 0 var(--accent-strong);
+}
+
+.metric:hover .metric-label {
   color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
-.metric-link:focus-visible {
+.metric:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius);
 }
 
-.metric-link:hover {
-  border-color: var(--border-strong, var(--border));
-}
-
-.metric {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-1);
-  padding: 14px 16px;
-}
-
 .metric-label {
   display: block;
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  font-weight: 600;
+  color: var(--text-secondary);
   margin-bottom: 4px;
 }
 
@@ -328,10 +365,18 @@ textarea:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
+/* P8.9: the one KPI where the value itself is the urgency —
+   Critical Open reads in the semantic critical colour
+   (6.57:1 on white). The label still names the metric, so
+   colour is never the sole carrier. */
+.metric-value-critical {
+  color: var(--critical);
+}
+
 .metric-note {
   display: block;
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   margin-top: 4px;
 }
 
@@ -375,7 +420,7 @@ textarea:focus-visible,
 }
 
 .data-table tbody tr:hover {
-  background: #f8fafb;
+  background: var(--row-hover);
 }
 
 .queue-link {
@@ -439,6 +484,34 @@ textarea:focus-visible,
   color: var(--warning);
 }
 
+/* P8.9: the severity cell wrapper keeps dot and chip aligned. */
+.severity-cell {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* P8.9: severity dot — a small semantic cue beside the chip.
+   The chip text remains the semantic carrier; the dot is
+   aria-hidden and never the sole carrier of severity. */
+
+.severity-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--border-strong);
+}
+
+.severity-dot-critical {
+  background: var(--critical);
+}
+
+.severity-dot-high {
+  background: var(--warning);
+}
+
 /* ==================================================
    STATES: LOADING / UNAVAILABLE / EMPTY / UNEXPECTED
    ================================================== */
@@ -460,8 +533,8 @@ textarea:focus-visible,
 }
 
 .state-error {
-  border-color: #f0b3ad;
-  background: #fff8f7;
+  border-color: var(--error-border);
+  background: var(--error-surface);
   color: var(--critical);
 }
 
@@ -800,7 +873,7 @@ textarea:focus-visible,
 .workspace-index-link[aria-current="location"] {
   color: var(--accent-dark);
   background: var(--accent-tint);
-  border-color: var(--accent);
+  border-color: var(--accent-strong);
   font-weight: 600;
 }
 
@@ -857,6 +930,17 @@ textarea:focus-visible,
 
 .progression-step-done .progression-step-status {
   color: var(--ok);
+  font-weight: 600;
+}
+
+/* P8.9: restrained completion check in --ok. The alternative-
+   text syntax keeps the mark out of the accessibility tree
+   where supported; the "Completed" text remains the semantic
+   carrier in every case. */
+.progression-step-done .progression-step-status::before {
+  content: "✓" / "";
+  margin-right: 4px;
+  font-weight: 700;
 }
 
 .progression-step-current {
@@ -1113,16 +1197,17 @@ textarea:focus-visible,
 .inbox-result-count {
   margin-top: var(--space-3);
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 /* P8.8: bounded-queue honesty note under the result count —
    reconciling full-population KPI values with the bounded
-   queue so the visible row count is never read as the total. */
+   queue so the visible row count is never read as the total.
+   P8.9: tertiary metadata uses the tertiary ramp step. */
 .inbox-bounded-note {
   margin-top: var(--space-2);
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   font-style: italic;
 }
 
@@ -1382,22 +1467,46 @@ textarea:focus-visible,
   gap: 16px;
 }
 
+/* P8.9: analytical panels carry their own identity — a tinted
+   header strip (edge to edge, clipped by the panel radius),
+   an elevated surface, and the accent-strong focused border.
+   Muted-panel opacity behaviour from P8.7.3 is unchanged. */
 .analytics-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  padding: 16px;
+  box-shadow: var(--shadow-1);
+  padding: 0;
+  overflow: hidden;
   min-width: 0;
 }
 
 .analytics-panel-header {
-  margin-bottom: 8px;
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--accent-tint);
+  border-bottom: 1px solid var(--border);
 }
 
 .analytics-panel-header h3 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
+  color: var(--accent-dark);
+}
+
+/* Body content inherits the padding the panel used to own. */
+.analytics-panel .analytics-context,
+.analytics-panel .analytics-empty-note {
+  margin: 12px 16px 0;
+}
+
+.analytics-panel .chart-figure {
+  margin: 10px 16px 14px;
+}
+
+.analytics-panel.is-focused {
+  border-color: var(--accent-strong);
 }
 
 .analytics-basis {

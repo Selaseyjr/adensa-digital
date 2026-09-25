@@ -53,9 +53,12 @@ interface LineChartProps {
 }
 
 // Fixed viewBox geometry; the SVG scales fluidly to its parent.
+// PAD.right keeps the final (right-edge) x-axis label fully
+// inside the viewBox: centre-anchored at the plot boundary,
+// a 16px pad clipped its right half ("2026-0").
 const W = 480;
 const H = 300;
-const PAD = { top: 16, right: 16, bottom: 36, left: 46 };
+const PAD = { top: 16, right: 24, bottom: 36, left: 46 };
 
 export function LineChart({
   points,
