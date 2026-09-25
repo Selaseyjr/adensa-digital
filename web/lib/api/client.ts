@@ -22,6 +22,15 @@
  */
 
 import type {
+  AnalyticsCategoricalEntry,
+  AnalyticsCategoricalSeries,
+  AnalyticsIncidencePoint,
+  AnalyticsIncidenceSeries,
+  AnalyticsOverview,
+  AnalyticsServicePerformancePoint,
+  AnalyticsServicePerformanceSeries,
+  AnalyticsVolumePoint,
+  AnalyticsVolumeSeries,
   ApiErrorBody,
   ControlTowerSummary,
   DecisionBrief,
@@ -626,6 +635,169 @@ export function getExceptionInbox(): Promise<ApiResult<InboxRow[]>> {
       ? { kind: "empty" as const }
       : result,
   );
+}
+
+// --------------------------------------------------
+// ANALYTICS OVERVIEW (P8.7.1, ADR-014)
+//
+// The validator mirrors the backend's per-series Pydantic
+// models: rate values are 0–100 percentages, null exactly when
+// the backend had a zero denominator, and every dataset
+// carries its honest `basis` wording. No analytical arithmetic
+// happens client-side — the chart visualizes what the API
+// computed.
+// --------------------------------------------------
+
+/**
+ * Structural guard for a JSON object boundary: non-null,
+ * non-array object. Field-level validation stays with the
+ * typed contract helpers.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateAnalyticsOverview(payload: unknown): AnalyticsOverview | null {
+  const parseRate = (value: unknown): number | null | undefined => {
+    if (value === null) return null;
+    return typeof value === "number" ? value : undefined;
+  };
+
+  const parseCategoricalSeries = (
+    value: unknown,
+  ): AnalyticsCategoricalSeries | null => {
+    if (!isRecord(value) || typeof value.basis !== "string") return null;
+    if (!Array.isArray(value.entries)) return null;
+    const entries: AnalyticsCategoricalEntry[] = [];
+    for (const raw of value.entries) {
+      if (!isRecord(raw)) return null;
+      // Entries pass through structurally for now: their
+      // per-field charts arrive in P8.7.3, so only the series
+      // envelope and primitive field types are guaranteed here.
+      const entry: Record<string, unknown> = {};
+      for (const [key, field] of Object.entries(raw)) {
+        if (
+          typeof field === "string" ||
+          typeof field === "number" ||
+          field === null
+        ) {
+          entry[key] = field;
+        } else {
+          return null;
+        }
+      }
+      entries.push(entry as unknown as AnalyticsCategoricalEntry);
+    }
+    return { basis: value.basis, entries };
+  };
+
+  if (!isRecord(payload)) return null;
+  const sp = payload.service_performance;
+  const ei = payload.exception_incidence;
+  const sv = payload.shipment_volume;
+  if (!isRecord(sp) || typeof sp.basis !== "string" || !Array.isArray(sp.points)) {
+    return null;
+  }
+  if (
+    !isRecord(ei) ||
+    typeof ei.basis !== "string" ||
+    !Array.isArray(ei.points)
+  ) {
+    return null;
+  }
+  if (
+    !isRecord(sv) ||
+    typeof sv.basis !== "string" ||
+    !Array.isArray(sv.points)
+  ) {
+    return null;
+  }
+
+  const servicePerformance: AnalyticsServicePerformanceSeries = {
+    basis: sp.basis,
+    points: sp.points
+      .filter(isRecord)
+      .map((p) => ({
+        month: typeof p.month === "string" ? p.month : "",
+        delivered: typeof p.delivered === "number" ? p.delivered : NaN,
+        on_time: typeof p.on_time === "number" ? p.on_time : NaN,
+        on_time_rate: parseRate(p.on_time_rate),
+      }))
+      .filter(
+        (p): p is AnalyticsServicePerformancePoint =>
+          p.month !== "" &&
+          p.on_time_rate !== undefined &&
+          Number.isFinite(p.delivered) &&
+          Number.isFinite(p.on_time),
+      ),
+  };
+  const exceptionIncidence: AnalyticsIncidenceSeries = {
+    basis: ei.basis,
+    points: ei.points
+      .filter(isRecord)
+      .map((p) => ({
+        month: typeof p.month === "string" ? p.month : "",
+        departing: typeof p.departing === "number" ? p.departing : NaN,
+        exceptions: typeof p.exceptions === "number" ? p.exceptions : NaN,
+        incidence_rate: parseRate(p.incidence_rate),
+      }))
+      .filter(
+        (p): p is AnalyticsIncidencePoint =>
+          p.month !== "" &&
+          p.incidence_rate !== undefined &&
+          Number.isFinite(p.departing) &&
+          Number.isFinite(p.exceptions),
+      ),
+  };
+  const shipmentVolume: AnalyticsVolumeSeries = {
+    basis: sv.basis,
+    points: sv.points
+      .filter(isRecord)
+      .map((p) => ({
+        month: typeof p.month === "string" ? p.month : "",
+        shipments: typeof p.shipments === "number" ? p.shipments : NaN,
+      }))
+      .filter(
+        (p): p is AnalyticsVolumePoint =>
+          p.month !== "" && Number.isFinite(p.shipments),
+      ),
+  };
+
+  const transport = parseCategoricalSeries(payload.transport);
+  const carriers = parseCategoricalSeries(payload.carriers);
+  const warehouses = parseCategoricalSeries(payload.warehouses);
+  const severity = parseCategoricalSeries(payload.severity);
+  if (!transport || !carriers || !warehouses || !severity) return null;
+
+  return {
+    service_performance: servicePerformance,
+    exception_incidence: exceptionIncidence,
+    shipment_volume: shipmentVolume,
+    transport,
+    carriers,
+    warehouses,
+    severity,
+  };
+}
+
+/** GET /v1/analytics/overview via the typed client. */
+export async function getAnalyticsOverview(): Promise<ApiResult<AnalyticsOverview>> {
+  const result = await getFromApi(
+    "/v1/analytics/overview",
+    validateAnalyticsOverview,
+  );
+  // Seven empty datasets mean the database holds no analytical
+  // population at all — the deliberate empty state, not data.
+  return result.kind === "data" &&
+    result.data.service_performance.points.length === 0 &&
+    result.data.exception_incidence.points.length === 0 &&
+    result.data.shipment_volume.points.length === 0 &&
+    result.data.transport.entries.length === 0 &&
+    result.data.carriers.entries.length === 0 &&
+    result.data.warehouses.entries.length === 0 &&
+    result.data.severity.entries.length === 0
+    ? { kind: "empty" as const }
+    : result;
 }
 
 /** GET /v1/exceptions/{id}/context — unknown exceptions map to the empty state. */

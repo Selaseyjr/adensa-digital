@@ -12,7 +12,7 @@
  */
 
 import { Suspense } from "react";
-import { getControlTowerSummary } from "@/lib/api/client";
+import { getAnalyticsOverview, getControlTowerSummary } from "@/lib/api/client";
 import {
   EmptyPanel,
   LoadingPanel,
@@ -23,6 +23,7 @@ import { ControlTowerMetrics } from "@/components/control-tower/ControlTowerMetr
 import { QueueCompositionBand } from "@/components/control-tower/QueueCompositionBand";
 import { FollowUpTable } from "@/components/control-tower/FollowUpTable";
 import { RecentlyResolvedTable } from "@/components/control-tower/RecentlyResolvedTable";
+import { AnalyticsSection } from "@/components/control-tower/AnalyticsSection";
 
 async function ControlTower() {
   const result = await getControlTowerSummary();
@@ -51,6 +52,7 @@ async function ControlTower() {
             </p>
             <QueueCompositionBand summary={result.data} />
           </section>
+          <AnalyticsOverviewSection />
           <section className="section" aria-labelledby="follow-up-title">
             <h2 id="follow-up-title" className="section-title">
               Follow-up Required
@@ -73,6 +75,39 @@ async function ControlTower() {
           </section>
         </>
       );
+  }
+}
+
+/**
+ * The analytical canvas, fetched independently of the
+ * operational snapshot so an analytics fetch failure does not
+ * take down the operational position. All four result states
+ * are handled deliberately: panels render on data, the honest
+ * analytical empty state renders on `empty`, and the shared
+ * unavailable/unexpected panels render on failure.
+ */
+async function AnalyticsOverviewSection() {
+  const analytics = await getAnalyticsOverview();
+  switch (analytics.kind) {
+    case "unavailable":
+      return <UnavailablePanel message={analytics.message} />;
+    case "unexpected":
+      return <UnexpectedPanel message={analytics.message} />;
+    case "empty":
+      return (
+        <section className="section" aria-labelledby="analytics-heading">
+          <h2 id="analytics-heading" className="section-title">
+            Analytics
+          </h2>
+          <p className="section-caption">
+            No analytical population is recorded yet — shipments and
+            exceptions appear here once the database holds them.
+          </p>
+          <EmptyPanel message="No analytics available yet." />
+        </section>
+      );
+    case "data":
+      return <AnalyticsSection overview={analytics.data} />;
   }
 }
 

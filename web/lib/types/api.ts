@@ -374,6 +374,109 @@ export const INTERVENTION_TYPES = [
 export const MANUAL_OUTCOMES = ["Resolved", "Still Open"] as const;
 
 // ==================================================
+// ANALYTICS OVERVIEW (P8.7.1, ADR-014)
+// ==================================================
+
+/**
+ * The analytical datasets behind the Control Tower's
+ * visualization layer. Rates are 0–100 percentages and null
+ * exactly when the backend had a zero denominator (no
+ * delivered shipments / no departing shipments that month) —
+ * the frontend must not recompute or zero-fill them.
+ * `basis` is contract metadata: the honest analytical-basis
+ * wording the UI renders verbatim.
+ */
+
+/** One month of delivered-shipment on-time performance. */
+export interface AnalyticsServicePerformancePoint {
+  month: string;
+  delivered: number;
+  on_time: number;
+  on_time_rate: number | null;
+}
+
+/** One departure month's exception incidence (not detection time). */
+export interface AnalyticsIncidencePoint {
+  month: string;
+  departing: number;
+  exceptions: number;
+  incidence_rate: number | null;
+}
+
+/** One month's recorded shipment volume. */
+export interface AnalyticsVolumePoint {
+  month: string;
+  shipments: number;
+}
+
+/** One transport mode's delivered population and on-time share. */
+export interface AnalyticsTransportEntry {
+  transport_mode: string;
+  delivered: number;
+  on_time: number;
+  on_time_rate: number | null;
+}
+
+/** One carrier's delivered population and on-time share. */
+export interface AnalyticsCarrierEntry {
+  carrier_id: string;
+  carrier_name: string;
+  delivered: number;
+  on_time: number;
+  on_time_rate: number | null;
+}
+
+/** One warehouse's recorded exception count. */
+export interface AnalyticsWarehouseEntry {
+  warehouse_id: string;
+  warehouse_name: string;
+  exceptions: number;
+}
+
+/** One severity class's open-exception count (workflow snapshot). */
+export interface AnalyticsSeverityEntry {
+  severity: string;
+  exceptions: number;
+}
+
+export type AnalyticsCategoricalEntry =
+  | AnalyticsTransportEntry
+  | AnalyticsCarrierEntry
+  | AnalyticsWarehouseEntry
+  | AnalyticsSeverityEntry;
+
+export interface AnalyticsCategoricalSeries {
+  basis: string;
+  entries: AnalyticsCategoricalEntry[];
+}
+
+export interface AnalyticsServicePerformanceSeries {
+  basis: string;
+  points: AnalyticsServicePerformancePoint[];
+}
+
+export interface AnalyticsIncidenceSeries {
+  basis: string;
+  points: AnalyticsIncidencePoint[];
+}
+
+export interface AnalyticsVolumeSeries {
+  basis: string;
+  points: AnalyticsVolumePoint[];
+}
+
+/** GET /v1/analytics/overview — seven honest datasets, no invented history. */
+export interface AnalyticsOverview {
+  service_performance: AnalyticsServicePerformanceSeries;
+  exception_incidence: AnalyticsIncidenceSeries;
+  shipment_volume: AnalyticsVolumeSeries;
+  transport: AnalyticsCategoricalSeries;
+  carriers: AnalyticsCategoricalSeries;
+  warehouses: AnalyticsCategoricalSeries;
+  severity: AnalyticsCategoricalSeries;
+}
+
+// ==================================================
 // ERROR CONTRACT
 // ==================================================
 

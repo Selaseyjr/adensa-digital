@@ -1323,3 +1323,102 @@ textarea:focus-visible,
     scroll-margin-top: 124px;
   }
 }
+
+/* ==================================================
+   ANALYTICAL CANVAS (P8.7.2)
+   ==================================================
+   Two-panel analytical layer beneath the operational
+   visual composition. Same visual language as the rest
+   of the tower: tokens, restrained surfaces, no decoration
+   beyond the one-shot reveal shared with the queue bands. */
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.analytics-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px;
+  min-width: 0;
+}
+
+.analytics-panel-header {
+  margin-bottom: 8px;
+}
+
+.analytics-panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.analytics-basis {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.analytics-context {
+  margin: 0 0 8px;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The SVG scales fluidly inside the panel; the primitive
+   owns its overflow safety, the grid owns the stacking. */
+.chart-figure {
+  margin: 0;
+  max-width: 100%;
+}
+
+.chart-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-dot {
+  fill: var(--accent);
+}
+
+.chart-axis-label {
+  fill: var(--text-secondary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-reveal {
+  animation: chart-reveal 200ms ease-out both;
+}
+
+@keyframes chart-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}

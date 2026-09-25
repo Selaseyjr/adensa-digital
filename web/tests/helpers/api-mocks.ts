@@ -26,6 +26,7 @@ export const API_BASE_URL = "http://127.0.0.1:8000";
 
 export const summaryPath = `${API_BASE_URL}/v1/control-tower/summary`;
 export const inboxPath = `${API_BASE_URL}/v1/exceptions/inbox`;
+export const analyticsPath = `${API_BASE_URL}/v1/analytics/overview`;
 
 export function exceptionApiPath(
   suffix: string,
@@ -378,6 +379,150 @@ export function makeManualResolutionOutcome(
     exception_status: "Resolved",
     ...overrides,
   };
+}
+
+/** One service-performance month, echoing the P8.7.1 contract. */
+export function makeServicePerformancePoint(
+  overrides: Partial<{
+    month: string;
+    delivered: number;
+    on_time: number;
+    on_time_rate: number | null;
+  }> = {},
+): {
+  month: string;
+  delivered: number;
+  on_time: number;
+  on_time_rate: number | null;
+} {
+  return {
+    month: "2026-01",
+    delivered: 100,
+    on_time: 70,
+    on_time_rate: 70,
+    ...overrides,
+  };
+}
+
+/** One departure-month incidence point. */
+export function makeIncidencePoint(
+  overrides: Partial<{
+    month: string;
+    departing: number;
+    exceptions: number;
+    incidence_rate: number | null;
+  }> = {},
+): {
+  month: string;
+  departing: number;
+  exceptions: number;
+  incidence_rate: number | null;
+} {
+  return {
+    month: "2026-01",
+    departing: 200,
+    exceptions: 60,
+    incidence_rate: 30,
+    ...overrides,
+  };
+}
+
+/**
+ * A full AnalyticsOverview payload matching the P8.7.1
+ * backend contract, at real dev-dataset scale where useful so
+ * percentage/axis rendering is exercised against truthful
+ * values; override any part per test.
+ */
+export function makeAnalyticsOverview(
+  overrides: {
+    service_performance?: unknown;
+    exception_incidence?: unknown;
+  } = {},
+): import("@/lib/types/api").AnalyticsOverview {
+  return {
+    service_performance: {
+      basis: "Delivered shipments by planned-arrival month",
+      points: [
+        makeServicePerformancePoint({
+          month: "2026-01",
+          delivered: 95,
+          on_time: 60,
+          on_time_rate: 63.2,
+        }),
+        makeServicePerformancePoint({
+          month: "2026-02",
+          delivered: 110,
+          on_time: 82,
+          on_time_rate: 74.5,
+        }),
+        makeServicePerformancePoint({
+          month: "2026-03",
+          delivered: 0,
+          on_time: 0,
+          on_time_rate: null,
+        }),
+        makeServicePerformancePoint({
+          month: "2026-04",
+          delivered: 120,
+          on_time: 96,
+          on_time_rate: 80,
+        }),
+      ],
+    },
+    exception_incidence: {
+      basis: "Exceptions by shipment departure month",
+      points: [
+        makeIncidencePoint({
+          month: "2026-01",
+          departing: 542,
+          exceptions: 167,
+          incidence_rate: 30.8,
+        }),
+        makeIncidencePoint({
+          month: "2026-02",
+          departing: 488,
+          exceptions: 130,
+          incidence_rate: 26.6,
+        }),
+      ],
+    },
+    shipment_volume: {
+      basis: "All shipments by planned-departure month",
+      points: [
+        { month: "2026-01", shipments: 542 },
+        { month: "2026-02", shipments: 488 },
+      ],
+    },
+    transport: {
+      basis: "Delivered shipments by transport mode",
+      entries: [
+        { transport_mode: "Road", delivered: 700, on_time: 520, on_time_rate: 74.3 },
+      ],
+    },
+    carriers: {
+      basis: "Delivered shipments by carrier",
+      entries: [
+        {
+          carrier_id: "CAR-001",
+          carrier_name: "Meridian Freight",
+          delivered: 300,
+          on_time: 220,
+          on_time_rate: 73.3,
+        },
+      ],
+    },
+    warehouses: {
+      basis: "Exceptions by origin warehouse",
+      entries: [
+        { warehouse_id: "WH-01", warehouse_name: "Rotterdam Hub", exceptions: 120 },
+      ],
+    },
+    severity: {
+      basis: "Open exceptions by severity (current snapshot)",
+      entries: [{ severity: "Critical", exceptions: 271 }],
+    },
+    ...overrides,
+  } as import("@/lib/types/api").AnalyticsOverview;
 }
 
 export function makeLatestAction(
