@@ -186,6 +186,7 @@ describe("inbox URL state", () => {
       q: "hamburg",
       severity: "Critical",
       verdict: "actionable",
+      workflow_state: "Awaiting execution",
       sort: "severity-desc",
     });
 
@@ -193,6 +194,7 @@ describe("inbox URL state", () => {
       q: "hamburg",
       severity: "Critical",
       verdict: "actionable",
+      workflow_state: "Awaiting execution",
       sort: "severity-desc",
     });
 
@@ -200,11 +202,13 @@ describe("inbox URL state", () => {
       verdict: "not-a-verdict",
       sort: "drop-tables",
       severity: "",
+      workflow_state: "executed", // not a contract state
     });
 
     expect(hardened.verdict).toBe("all");
     expect(hardened.sort).toBe("backend");
     expect(hardened.severity).toBe("all");
+    expect(hardened.workflow_state).toBe("all");
   });
 
   it("handles array-valued params by taking the first value", () => {
@@ -215,6 +219,24 @@ describe("inbox URL state", () => {
     expect(parsed.severity).toBe("Critical");
   });
 
+  it("parses and rejects workflow_state values against the backend vocabulary", () => {
+    const exact = parseInboxFilters({
+      workflow_state: "Executed — still open", // em dash, contract-verbatim
+    });
+
+    expect(exact.workflow_state).toBe("Executed — still open");
+
+    for (const bogus of [
+      "decision-required",
+      "Executed - still open", // hyphen, not the contract's em dash
+      "Resolved",
+    ]) {
+      expect(parseInboxFilters({ workflow_state: bogus }).workflow_state).toBe(
+        "all",
+      );
+    }
+  });
+
   it("omits default values from the canonical query string", () => {
     expect(buildInboxQueryString(DEFAULT_INBOX_FILTERS)).toBe("");
     expect(
@@ -222,6 +244,7 @@ describe("inbox URL state", () => {
         q: "",
         severity: "High",
         verdict: "all",
+        workflow_state: "all",
         sort: "backend",
       }),
     ).toBe("?severity=High");
@@ -231,6 +254,15 @@ describe("inbox URL state", () => {
         "EXC-000009",
       ),
     ).toBe("?q=hamburg&sort=eta-asc&exception=EXC-000009");
+    expect(
+      buildInboxQueryString({
+        q: "",
+        severity: "all",
+        verdict: "all",
+        workflow_state: "Decision required",
+        sort: "backend",
+      }),
+    ).toBe("?workflow_state=Decision+required");
   });
 
   it("round-trips a state through query string and parser", () => {
@@ -238,6 +270,7 @@ describe("inbox URL state", () => {
       q: "hamburg",
       severity: "Critical",
       verdict: "actionable",
+      workflow_state: "Executed — still open",
       sort: "required-asc",
     } as const;
 
@@ -262,6 +295,34 @@ describe("inbox URL state", () => {
       "Low",
     ]);
   });
+
+  it("filters by the backend workflow state, matching the contract verbatim", () => {
+    const rows = queueRows();
+    rows[0].workflow_state = "Decision required";
+    rows[1].workflow_state = "No system recovery available";
+    rows[2].workflow_state = "Executed — still open";
+
+    const pending = filterInboxRows(rows, {
+      q: "",
+      severity: "all",
+      verdict: "all",
+      workflow_state: "Decision required",
+    });
+
+    expect(pending.map((row) => row.exception_id)).toEqual(["EXC-A"]);
+
+    const followUp = filterInboxRows(rows, {
+      q: "",
+      severity: "all",
+      verdict: "all",
+      workflow_state: "Executed — still open",
+    });
+
+    expect(followUp.map((row) => row.exception_id)).toEqual(["EXC-C"]);
+
+    // No row is dropped when no workflow filter is applied.
+    expect(filterInboxRows(rows, { q: "", severity: "all", verdict: "all" })).toHaveLength(3);
+  });
 });
 
 // ------------------------------------------------------------
@@ -269,7 +330,7 @@ describe("inbox URL state", () => {
 // ------------------------------------------------------------
 
 describe("inbox toolbar", () => {
-  it("renders labelled search, severity, verdict and sort controls", () => {
+  it("renders labelled search, severity, verdict, workflow-state and sort controls", () => {
     render(
       <InboxToolbar
         state={DEFAULT_INBOX_FILTERS}
@@ -283,10 +344,25 @@ describe("inbox toolbar", () => {
     expect(screen.getByLabelText("Search")).toBeInTheDocument();
     expect(screen.getByLabelText("Severity")).toBeInTheDocument();
     expect(screen.getByLabelText("Recovery state")).toBeInTheDocument();
+    expect(screen.getByLabelText("Workflow state")).toBeInTheDocument();
     expect(screen.getByLabelText("Sort")).toBeInTheDocument();
     expect(
       screen.getByRole("search", { name: "Filter the exception work queue" }),
     ).toBeInTheDocument();
+
+    // The workflow-state select exposes exactly the backend
+    // contract vocabulary — nothing invented client-side.
+    const workflowSelect = screen.getByLabelText(
+      "Workflow state",
+    ) as HTMLSelectElement;
+    const options = [...workflowSelect.options].map((o) => o.value);
+    expect(options).toEqual([
+      "all",
+      "Decision required",
+      "Awaiting execution",
+      "Executed — still open",
+      "No system recovery available",
+    ]);
   });
 
   it("navigates with the active filters plus preserved selection on submit", async () => {
@@ -333,13 +409,42 @@ describe("inbox toolbar", () => {
     expect(pushMock).toHaveBeenCalledWith("/exceptions?severity=Critical");
   });
 
+  it("carries a workflow-state selection into the URL on change", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <InboxToolbar
+        state={DEFAULT_INBOX_FILTERS}
+        severityOptions={["Critical"]}
+        visibleCount={1}
+        totalCount={2}
+        selectedExceptionId={null}
+      />,
+    );
+
+    await user.selectOptions(
+      screen.getByLabelText("Workflow state"),
+      "Awaiting execution",
+    );
+
+    expect(pushMock).toHaveBeenCalledWith(
+      "/exceptions?workflow_state=Awaiting+execution",
+    );
+  });
+
   it("pushes the bare route when filters return to defaults", async () => {
     const user = userEvent.setup();
     window.history.replaceState(null, "", "/exceptions?severity=High");
 
     render(
       <InboxToolbar
-        state={{ q: "", severity: "High", verdict: "all", sort: "backend" }}
+        state={{
+          q: "",
+          severity: "High",
+          verdict: "all",
+          workflow_state: "all",
+          sort: "backend",
+        }}
         severityOptions={["High"]}
         visibleCount={1}
         totalCount={1}
@@ -354,11 +459,17 @@ describe("inbox toolbar", () => {
 
   it("shows the reset control only when filters are active", async () => {
     const user = userEvent.setup();
-    window.history.replaceState(null, "", "/exceptions?severity=High");
+    window.history.replaceState(null, "", "/exceptions?workflow_state=Decision%20required");
 
     render(
       <InboxToolbar
-        state={{ q: "", severity: "High", verdict: "all", sort: "backend" }}
+        state={{
+          q: "",
+          severity: "all",
+          verdict: "all",
+          workflow_state: "Decision required",
+          sort: "backend",
+        }}
         severityOptions={["High"]}
         visibleCount={1}
         totalCount={1}
@@ -403,6 +514,41 @@ describe("inbox toolbar", () => {
     expect(screen.getByRole("status").textContent).toBe(
       "7 queued exceptions",
     );
+  });
+
+  it("states the bounded-queue honesty note under full-population filters", () => {
+    render(
+      <InboxToolbar
+        state={{
+          ...DEFAULT_INBOX_FILTERS,
+          workflow_state: "Awaiting execution",
+        }}
+        severityOptions={["Critical"]}
+        visibleCount={1}
+        totalCount={2}
+        selectedExceptionId={null}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Control Tower counts describe the full open population/),
+    ).toBeInTheDocument();
+  });
+
+  it("omits the bounded-queue note when no population filter is active", () => {
+    render(
+      <InboxToolbar
+        state={{ ...DEFAULT_INBOX_FILTERS, sort: "eta-asc" }}
+        severityOptions={[]}
+        visibleCount={2}
+        totalCount={2}
+        selectedExceptionId={null}
+      />,
+    );
+
+    expect(
+      screen.queryByText(/Control Tower counts describe/),
+    ).not.toBeInTheDocument();
   });
 });
 

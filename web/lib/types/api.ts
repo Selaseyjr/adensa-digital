@@ -85,7 +85,24 @@ export interface InboxRow {
   required_delivery_date: string;
   feasible_option_count: number;
   executed_still_open: number;
+  /**
+   * The exception's operational state (P8.8), derived by the
+   * backend from the same persisted evidence as
+   * `classify_investigation_state` — one of the documented
+   * open states. Never recomputed client-side.
+   */
+  workflow_state: string;
 }
+
+/** The open-state vocabulary the backend contract exposes on inbox rows (P8.8). */
+export const WORKFLOW_STATES = [
+  "Decision required",
+  "Awaiting execution",
+  "Executed — still open",
+  "No system recovery available",
+] as const;
+
+export type WorkflowStateValue = (typeof WORKFLOW_STATES)[number];
 
 // ==================================================
 // INVESTIGATION WORKSPACE (P4)

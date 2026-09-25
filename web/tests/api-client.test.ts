@@ -224,6 +224,7 @@ describe("boundary rules", () => {
         "required_delivery_date",
         "feasible_option_count",
         "executed_still_open",
+        "workflow_state",
       ].sort(),
     );
 

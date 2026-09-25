@@ -411,7 +411,9 @@ export function isInboxRow(body: unknown): InboxRow | null {
     typeof candidate.severity === "string" &&
     typeof candidate.exception_type === "string" &&
     typeof candidate.feasible_option_count === "number" &&
-    typeof candidate.executed_still_open === "number"
+    typeof candidate.executed_still_open === "number" &&
+    typeof candidate.workflow_state === "string" &&
+    candidate.workflow_state.length > 0
     ? (body as InboxRow)
     : null;
 }

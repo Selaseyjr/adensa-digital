@@ -105,14 +105,60 @@ def get_exception_inbox(connection):
     UI, API or CLI — depends on the persistence layer's row
     type (the versioned application-boundary contract,
     ADR-011).
+
+    Each row also carries `workflow_state` — the exception's
+    operational state from the SAME derivation as
+    `classify_investigation_state` (checkpoint S): latest
+    recovery-action status mapped through the documented
+    open-state vocabulary. No parallel state machine: the
+    values are exactly the classifier's open states, computed
+    per row from the same persisted evidence (the latest
+    recovery action's status, latest by `action_id`).
     """
 
-    return [
-        dict(row)
-        for row in exceptions_repo.get_open_exceptions_inbox(
-            connection,
+    rows = []
+    for row in exceptions_repo.get_open_exceptions_inbox(
+        connection,
+    ):
+        item = dict(row)
+        item["workflow_state"] = _workflow_state_from_action_status(
+            item.get("latest_action_status"),
         )
-    ]
+        # The raw status is a derivation input, not contract
+        # surface — the derived state supersedes it.
+        del item["latest_action_status"]
+        rows.append(item)
+    return rows
+
+
+def _workflow_state_from_action_status(latest_action_status):
+    """
+    The open-state vocabulary shared by the inbox rows and
+    `classify_investigation_state` (checkpoint S), derived
+    from the latest recovery action's status — the identical
+    evidence the classifier reads. No state is invented:
+    every branch mirrors the classifier's checks in order.
+    """
+
+    if latest_action_status is None:
+        return "No system recovery available"
+    if latest_action_status == APPROVED:
+        return "Awaiting execution"
+    if latest_action_status == EXECUTED:
+        return "Executed — still open"
+    return "Decision required"
+
+
+# The documented open-state vocabulary the inbox contract
+# exposes (P8.8): exactly the classifier's open states, in
+# lifecycle order. The frontend filter grammar and the KPI
+# deep-links consume this list verbatim.
+WORKFLOW_STATES = (
+    "Decision required",
+    "Awaiting execution",
+    "Executed — still open",
+    "No system recovery available",
+)
 
 
 # ==================================================

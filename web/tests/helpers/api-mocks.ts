@@ -78,6 +78,7 @@ export function makeInboxRow(overrides: Partial<InboxRow> = {}): InboxRow {
     required_delivery_date: "2026-09-15",
     feasible_option_count: 2,
     executed_still_open: 0,
+    workflow_state: "Decision required",
     ...overrides,
   };
 }

@@ -278,6 +278,13 @@ class InboxRow(BaseModel):
     required_delivery_date: str
     feasible_option_count: int
     executed_still_open: int
+    # The exception's operational state, derived by the service
+    # from the same persisted evidence as
+    # classify_investigation_state (latest recovery-action
+    # status). One of the documented open states: "Decision
+    # required", "Awaiting execution", "Executed — still open",
+    # or "No system recovery available".
+    workflow_state: str
 
 
 class ControlTowerRecentlyResolved(BaseModel):

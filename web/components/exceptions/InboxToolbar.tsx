@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 import { useRef } from "react";
 import {
   inboxHasActiveFilters,
+  WORKFLOW_STATES,
   type InboxFilterState,
   type InboxSortValue,
   type InboxVerdictValue,
@@ -85,6 +86,9 @@ export function InboxToolbar({
     if (data.get("verdict") !== "all") {
       params.set("verdict", String(data.get("verdict")));
     }
+    if (data.get("workflow_state") !== "all") {
+      params.set("workflow_state", String(data.get("workflow_state")));
+    }
     if (data.get("sort") !== "backend") {
       params.set("sort", String(data.get("sort")));
     }
@@ -100,6 +104,7 @@ export function InboxToolbar({
       params.delete("q");
       params.delete("severity");
       params.delete("verdict");
+      params.delete("workflow_state");
       params.delete("sort");
     });
   };
@@ -115,6 +120,9 @@ export function InboxToolbar({
   }
   if (state.verdict !== "all") {
     activeChips.push(VERDICT_LABELS[state.verdict]);
+  }
+  if (state.workflow_state !== "all") {
+    activeChips.push(`workflow state ${state.workflow_state}`);
   }
   if (state.sort !== "backend") {
     activeChips.push(SORT_LABELS[state.sort]);
@@ -180,6 +188,23 @@ export function InboxToolbar({
         </div>
 
         <div className="action-field">
+          <label htmlFor="inbox-workflow-state">Workflow state</label>
+          <select
+            id="inbox-workflow-state"
+            name="workflow_state"
+            defaultValue={state.workflow_state}
+            onChange={navigateFromForm}
+          >
+            <option value="all">All workflow states</option>
+            {WORKFLOW_STATES.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="action-field">
           <label htmlFor="inbox-sort">Sort</label>
           <select
             id="inbox-sort"
@@ -216,6 +241,18 @@ export function InboxToolbar({
           ? `Showing ${visibleCount} of ${totalCount} queued exceptions — ${activeChips.join(", ")}`
           : `${totalCount} queued exceptions`}
       </p>
+
+      {/* Count honesty (P8.8): KPI deep-links arrive from
+          full-population metrics, while this queue is bounded
+          to 100 rows — the distinction is stated, never left
+          for the planner to reconcile. */}
+      {state.severity !== "all" || state.workflow_state !== "all" ? (
+        <p className="inbox-bounded-note">
+          Control Tower counts describe the full open population;
+          this bounded queue shows at most 100 rows, so fewer
+          matches here does not mean fewer exceptions overall.
+        </p>
+      ) : null}
     </div>
   );
 }

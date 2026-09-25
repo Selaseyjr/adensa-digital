@@ -226,7 +226,14 @@ def get_open_exceptions_inbox(connection):
                 WHERE ra.exception_id = e.exception_id
                   AND ra.status = 'Executed'
                 LIMIT 1
-            ) IS NOT NULL AS executed_still_open
+            ) IS NOT NULL AS executed_still_open,
+            (
+                SELECT ra.status
+                FROM recovery_actions ra
+                WHERE ra.exception_id = e.exception_id
+                ORDER BY ra.action_id DESC
+                LIMIT 1
+            ) AS latest_action_status
         FROM exceptions e
         JOIN shipments s
             ON e.shipment_id = s.shipment_id

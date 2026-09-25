@@ -118,6 +118,41 @@ describe("control tower metrics", () => {
 
     expect(screen.getByText("0")).toBeInTheDocument();
   });
+
+  it("deep-links every KPI card to its truthful Inbox view (P8.8)", () => {
+    render(<ControlTowerMetrics summary={summary} />);
+
+    const hrefOf = (label: string): string | null => {
+      const link = screen.getByRole("link", { name: new RegExp(label) });
+      return link.getAttribute("href");
+    };
+
+    expect(hrefOf("Open Exceptions")).toBe("/exceptions");
+    expect(hrefOf("Pending Decisions")).toBe(
+      "/exceptions?workflow_state=Decision%20required",
+    );
+    expect(hrefOf("Awaiting Execution")).toBe(
+      "/exceptions?workflow_state=Awaiting%20execution",
+    );
+    expect(hrefOf("Follow-up Required")).toBe(
+      "/exceptions?workflow_state=Executed%20%E2%80%94%20still%20open",
+    );
+    expect(hrefOf("Critical Open")).toBe("/exceptions?severity=Critical");
+    expect(hrefOf("Actionable")).toBe("/exceptions?verdict=actionable");
+    expect(hrefOf("Monitoring")).toBe("/exceptions?verdict=no-feasible");
+  });
+
+  it("renders all seven KPI cards as keyboard-reachable semantic links", () => {
+    render(<ControlTowerMetrics summary={summary} />);
+
+    const links = screen.getAllByRole("link");
+
+    expect(links).toHaveLength(7);
+    for (const link of links) {
+      expect(link.tagName).toBe("A");
+      expect(link.getAttribute("href")).toMatch(/^\/exceptions/);
+    }
+  });
 });
 
 describe("follow-up queue", () => {

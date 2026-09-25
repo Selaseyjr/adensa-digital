@@ -18,7 +18,10 @@ from app.api import app
 from app.config import ADENSA_CORS_ORIGINS
 from app.generate_recovery_options import generate_recovery_options
 from app.migrations import CURRENT_VERSION
-from app.services import get_latest_action as services_get_latest_action
+from app.services import (
+    WORKFLOW_STATES,
+    get_latest_action as services_get_latest_action,
+)
 from app.workflow_engine import generate_workflow_actions
 
 from tests.test_api import (
@@ -1239,3 +1242,91 @@ def test_v1_decision_brief_does_not_mutate_workflow_or_database(api_client):
     ).fetchall()
 
     assert briefs_table == []
+
+
+# ==================================================
+# INBOX WORKFLOW STATE (P8.8)
+# ==================================================
+
+def test_v1_inbox_rows_carry_workflow_state(api_client):
+    """
+    Inbox rows expose the persisted workflow state, derived
+    through the investigation classifier — the same source of
+    truth the Investigation Workspace renders. No parallel
+    state machine is introduced.
+    """
+
+    client, connection = api_client
+
+    response = client.get("/v1/exceptions/inbox")
+
+    assert response.status_code == 200
+
+    rows = response.json()
+    assert rows, "expected seeded exceptions in the inbox"
+
+    for row in rows:
+        assert isinstance(row["workflow_state"], str)
+        assert row["workflow_state"] in WORKFLOW_STATES
+
+    # The fresh bootstrap dataset has no recovery actions, so
+    # every open row honestly reads as no-system-recovery.
+    assert {
+        row["workflow_state"] for row in rows
+    } == {"No system recovery available"}
+
+
+def test_v1_inbox_workflow_state_tracks_latest_action(api_client):
+    """
+    The row's workflow_state derives from the latest action's
+    status exactly as the classifier does: a pending approval
+    reads Decision required, an executed action reads
+    Executed — still open.
+    """
+
+    client, connection = api_client
+
+    _generate_options_and_action(connection)
+
+    rows = client.get("/v1/exceptions/inbox").json()
+    row = next(r for r in rows if r["exception_id"] == "EXC-900002")
+
+    assert row["workflow_state"] == "Decision required"
+
+    action = services_get_latest_action(connection, "EXC-900002")
+    connection.execute(
+        "UPDATE recovery_actions SET status = ? WHERE action_id = ?",
+        ("Executed", action["action_id"]),
+    )
+    connection.commit()
+
+    rows = client.get("/v1/exceptions/inbox").json()
+    row = next(r for r in rows if r["exception_id"] == "EXC-900002")
+
+    assert row["workflow_state"] == "Executed — still open"
+
+
+def test_v1_inbox_workflow_state_and_legacy_shape_coexist(api_client):
+    """
+    The P8.8 field is additive: every pre-existing inbox
+    contract field is unchanged on the same response.
+    """
+
+    client, connection = api_client
+
+    _generate_options_and_action(connection)
+
+    row = next(
+        r
+        for r in client.get("/v1/exceptions/inbox").json()
+        if r["exception_id"] == "EXC-900002"
+    )
+
+    assert row["severity"] == "High"
+    assert row["exception_type"] == "Shipment Delay"
+    assert row["shipment_id"] == "SHP-900002"
+    assert row["transport_mode"] == "Sea"
+    assert isinstance(row["feasible_option_count"], int)
+    assert isinstance(row["executed_still_open"], int)
+    assert row["resolution_status"] == "Open"
+    assert isinstance(row["workflow_state"], str)

@@ -1,6 +1,7 @@
 /**
- * Inbox filter / search / sort — pure functions over the
- * existing bounded inbox payload (`GET /v1/exceptions/inbox`).
+ * Inbox filter / search / state / sort — pure functions over
+ * the existing bounded inbox payload (`GET
+ * /v1/exceptions/inbox`).
  *
  * Architectural position: these helpers shape which rows the
  * work-queue table PRESENTS. They never reorder rows unless
@@ -11,6 +12,12 @@
  * display mapping (`feasible_option_count` /
  * `executed_still_open`) the table has always rendered, and
  * only the backend decides what those fields mean.
+ *
+ * `workflow_state` (P8.8) filters on the field the backend
+ * contract derives from the same persisted evidence as
+ * `classify_investigation_state` — the exact open-state
+ * vocabulary the backend exposes, never a client-side
+ * reclassification.
  *
  * All filter state is URL-representable: every value in
  * `InboxFilterState` round-trips through
@@ -24,6 +31,22 @@ export type InboxVerdictValue =
   | "actionable"
   | "no-feasible"
   | "executed-open";
+
+/**
+ * The backend's open-state vocabulary for inbox rows
+ * (P8.8) — exactly the values `workflow_state` carries, as
+ * derived by the service from the latest recovery-action
+ * status. Kept in sync with the backend contract; no client
+ * side state machine.
+ */
+export const WORKFLOW_STATES = [
+  "Decision required",
+  "Awaiting execution",
+  "Executed — still open",
+  "No system recovery available",
+] as const;
+
+export type WorkflowStateValue = (typeof WORKFLOW_STATES)[number];
 
 export type InboxSortValue =
   | "backend"
@@ -39,6 +62,8 @@ export interface InboxFilterState {
   severity: string;
   /** Display-verdict filter, or "all". */
   verdict: InboxVerdictValue | "all";
+  /** Exact backend workflow-state match, or "all". */
+  workflow_state: WorkflowStateValue | "all";
   sort: InboxSortValue;
 }
 
@@ -46,6 +71,7 @@ export const DEFAULT_INBOX_FILTERS: InboxFilterState = {
   q: "",
   severity: "all",
   verdict: "all",
+  workflow_state: "all",
   sort: "backend",
 };
 
@@ -128,16 +154,35 @@ function matchesVerdict(
   return verdict === "all" || verdictOf(row).value === verdict;
 }
 
-/** Apply the search/severity/verdict filters. Order is untouched. */
+function matchesWorkflowState(
+  row: InboxRow,
+  workflowState: InboxFilterState["workflow_state"] | undefined,
+): boolean {
+  return (
+    workflowState === undefined ||
+    workflowState === "all" ||
+    row.workflow_state === workflowState
+  );
+}
+
+/** Apply the search/severity/verdict/workflow-state filters. Order is untouched.
+ *  `workflow_state` is optional so pre-existing callers (which predate the
+ *  P8.8 field) filter identically without naming it. */
 export function filterInboxRows(
   rows: InboxRow[],
-  state: Pick<InboxFilterState, "q" | "severity" | "verdict">,
+  state: Pick<
+    InboxFilterState,
+    "q" | "severity" | "verdict"
+  > & {
+    workflow_state?: InboxFilterState["workflow_state"];
+  },
 ): InboxRow[] {
   return rows.filter(
     (row) =>
       matchesSearch(row, state.q) &&
       matchesSeverity(row, state.severity) &&
-      matchesVerdict(row, state.verdict),
+      matchesVerdict(row, state.verdict) &&
+      matchesWorkflowState(row, state.workflow_state),
   );
 }
 
@@ -199,6 +244,7 @@ export function inboxHasActiveFilters(state: InboxFilterState): boolean {
     state.q.trim() !== "" ||
     state.severity !== DEFAULT_INBOX_FILTERS.severity ||
     state.verdict !== DEFAULT_INBOX_FILTERS.verdict ||
+    state.workflow_state !== DEFAULT_INBOX_FILTERS.workflow_state ||
     state.sort !== DEFAULT_INBOX_FILTERS.sort
   );
 }
@@ -230,6 +276,7 @@ export function parseInboxFilters(
   const q = first("q");
   const severity = first("severity") || "all";
   const rawVerdict = first("verdict");
+  const rawWorkflowState = first("workflow_state");
   const rawSort = first("sort");
 
   return {
@@ -237,6 +284,11 @@ export function parseInboxFilters(
     severity,
     verdict: (VERDICT_VALUES as readonly string[]).includes(rawVerdict)
       ? (rawVerdict as InboxVerdictValue)
+      : "all",
+    workflow_state: (WORKFLOW_STATES as readonly string[]).includes(
+      rawWorkflowState,
+    )
+      ? (rawWorkflowState as WorkflowStateValue)
       : "all",
     sort: (SORT_VALUES as readonly string[]).includes(rawSort)
       ? (rawSort as InboxSortValue)
@@ -262,6 +314,9 @@ export function buildInboxQueryString(
   }
   if (state.verdict !== "all") {
     params.set("verdict", state.verdict);
+  }
+  if (state.workflow_state !== "all") {
+    params.set("workflow_state", state.workflow_state);
   }
   if (state.sort !== "backend") {
     params.set("sort", state.sort);
