@@ -15,9 +15,11 @@ import type {
   InvestigationState,
   ManualInterventionRecord,
   ManualResolutionOutcome,
+  OperationalRefreshSummary,
   RecoveryActionRef,
   RecoveryAssessment,
   ScoredOption,
+  SimulatedArrivalSummary,
   SustainabilityComparison,
   WorkflowOutcome,
 } from "@/lib/types/api";
@@ -27,6 +29,9 @@ export const API_BASE_URL = "http://127.0.0.1:8000";
 export const summaryPath = `${API_BASE_URL}/v1/control-tower/summary`;
 export const inboxPath = `${API_BASE_URL}/v1/exceptions/inbox`;
 export const analyticsPath = `${API_BASE_URL}/v1/analytics/overview`;
+export const operationsRefreshPath = () => `${API_BASE_URL}/v1/operations/refresh`;
+export const operationsSimulatePath = () =>
+  `${API_BASE_URL}/v1/operations/simulate-arrival`;
 
 export function exceptionApiPath(
   suffix: string,
@@ -566,6 +571,40 @@ export function makeLatestAction(
   };
 }
 
+// --------------------------------------------------
+// OPERATIONS PAYLOAD FACTORIES (P9.1)
+// --------------------------------------------------
+
+export function makeRefreshSummary(
+  overrides: Partial<OperationalRefreshSummary> = {},
+): OperationalRefreshSummary {
+  return {
+    new_exceptions: 0,
+    new_options: 0,
+    new_exception_ids: [],
+    actions_evaluated: 0,
+    new_actions: 0,
+    actions_without_recommendation: 0,
+    actions_skipped: 0,
+    ...overrides,
+  };
+}
+
+export function makeSimulatedArrival(
+  overrides: Partial<SimulatedArrivalSummary> = {},
+): SimulatedArrivalSummary {
+  return {
+    shipment_id: "SHP-010000",
+    order_id: "ORD-0001",
+    carrier_id: "CAR-001",
+    event_count: 2,
+    required_delivery: "2026-09-15",
+    estimated_arrival: "2026-09-21",
+    delay_days: 6,
+    ...overrides,
+  };
+}
+
 /** Intercept every /v1 endpoint the workspace and queue consume. */
 export function createApiServer() {
   return setupServer(
@@ -614,6 +653,12 @@ export function createApiServer() {
     ),
     http.post(manualResolutionApiPath(), () =>
       HttpResponse.json(makeManualResolutionOutcome()),
+    ),
+    http.post(operationsRefreshPath(), () =>
+      HttpResponse.json(makeRefreshSummary()),
+    ),
+    http.post(operationsSimulatePath(), () =>
+      HttpResponse.json(makeSimulatedArrival()),
     ),
   );
 }

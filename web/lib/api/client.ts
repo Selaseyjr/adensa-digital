@@ -44,6 +44,8 @@ import type {
   ManualInterventionRecord,
   ManualResolutionOutcome,
   ManualResolutionRequest,
+  OperationalRefreshSummary,
+  SimulatedArrivalSummary,
   ApproveRequest,
   RejectRequest,
   RecoveryActionRef,
@@ -106,6 +108,8 @@ const EXCEPTION_HISTORY_PATH = "/v1/exceptions/{id}/history";
 const EXCEPTION_SUSTAINABILITY_PATH = "/v1/exceptions/{id}/sustainability";
 const EXCEPTION_INTERVENTIONS_PATH = "/v1/exceptions/{id}/interventions";
 const EXCEPTION_DECISION_BRIEF_PATH = "/v1/exceptions/{id}/decision-brief";
+const OPERATIONS_REFRESH_PATH = "/v1/operations/refresh";
+const OPERATIONS_SIMULATE_ARRIVAL_PATH = "/v1/operations/simulate-arrival";
 
 function exceptionPath(template: string, exceptionId: string): string {
   return template.replace("{id}", encodeURIComponent(exceptionId));
@@ -1090,3 +1094,111 @@ export function recordManualResolution(
 }
 
 export type { ApiErrorBody };
+
+// --------------------------------------------------
+// OPERATIONS (P9.1)
+//
+// The two operational controls the legacy Streamlit surface
+// exposes, consumed through the same typed, fail-closed
+// boundary. Both are body-less POSTs; the validation is
+// strict field-by-field because the rendered summaries must
+// never present a half-parsed backend payload as fact.
+// --------------------------------------------------
+
+/**
+ * Structural validator for `OperationalRefreshSummary` —
+ * exactly the backend's seven fields, exact types, no extras.
+ */
+export function isOperationalRefreshSummary(
+  body: unknown,
+): OperationalRefreshSummary | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const candidate: Record<string, unknown> = {};
+  const numeric = [
+    "new_exceptions",
+    "new_options",
+    "actions_evaluated",
+    "new_actions",
+    "actions_without_recommendation",
+    "actions_skipped",
+  ];
+
+  for (const key of numeric) {
+    if (typeof body[key] !== "number") return null;
+    candidate[key] = body[key];
+  }
+
+  if (!Array.isArray(body.new_exception_ids)) return null;
+  if (!body.new_exception_ids.every((id) => typeof id === "string")) {
+    return null;
+  }
+
+  if (Object.keys(body).length !== numeric.length + 1) return null;
+
+  return {
+    new_exceptions: candidate.new_exceptions as number,
+    new_options: candidate.new_options as number,
+    new_exception_ids: body.new_exception_ids as string[],
+    actions_evaluated: candidate.actions_evaluated as number,
+    new_actions: candidate.new_actions as number,
+    actions_without_recommendation:
+      candidate.actions_without_recommendation as number,
+    actions_skipped: candidate.actions_skipped as number,
+  };
+}
+
+/**
+ * Structural validator for `SimulatedArrivalSummary` —
+ * exactly the backend's seven fields, exact types, no extras.
+ */
+export function isSimulatedArrivalSummary(
+  body: unknown,
+): SimulatedArrivalSummary | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const strings = [
+    "shipment_id",
+    "order_id",
+    "carrier_id",
+    "required_delivery",
+    "estimated_arrival",
+  ];
+
+  return strings.every((key) => typeof body[key] === "string") &&
+    typeof body.event_count === "number" &&
+    typeof body.delay_days === "number" &&
+    Object.keys(body).length === strings.length + 2
+    ? (body as unknown as SimulatedArrivalSummary)
+    : null;
+}
+
+/**
+ * POST /v1/operations/refresh — re-run detect → options →
+ * actions and report what the run created. No request body.
+ */
+export function refreshOperationsPipeline(): Promise<
+  MutationResult<OperationalRefreshSummary>
+> {
+  return postToApi(OPERATIONS_REFRESH_PATH, null, isOperationalRefreshSummary);
+}
+
+/**
+ * POST /v1/operations/simulate-arrival — record one controlled
+ * simulated shipment arrival. No request body: the simulation
+ * derives its deterministic scenario from existing operational
+ * data (HTTP 409 when there is nothing to derive from).
+ */
+export function simulateShipmentArrival(): Promise<
+  MutationResult<SimulatedArrivalSummary>
+> {
+  return postToApi(
+    OPERATIONS_SIMULATE_ARRIVAL_PATH,
+    null,
+    isSimulatedArrivalSummary,
+  );
+}

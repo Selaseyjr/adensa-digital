@@ -502,6 +502,42 @@ export interface AnalyticsOverview {
 }
 
 // ==================================================
+// OPERATIONS (P9.1)
+// ==================================================
+
+/**
+ * What one operational-refresh run created — `POST
+ * /v1/operations/refresh` re-runs detect → options → actions
+ * and reports the deltas. Field names mirror the backend's
+ * Pydantic `OperationalRefreshSummary` exactly.
+ */
+export interface OperationalRefreshSummary {
+  new_exceptions: number;
+  new_options: number;
+  new_exception_ids: string[];
+  actions_evaluated: number;
+  new_actions: number;
+  actions_without_recommendation: number;
+  actions_skipped: number;
+}
+
+/**
+ * One controlled simulated shipment arrival — `POST
+ * /v1/operations/simulate-arrival`. The simulation only
+ * records the arrival; detection happens on the next refresh.
+ * Field names mirror `SimulatedArrivalSummary` exactly.
+ */
+export interface SimulatedArrivalSummary {
+  shipment_id: string;
+  order_id: string;
+  carrier_id: string;
+  event_count: number;
+  required_delivery: string;
+  estimated_arrival: string;
+  delay_days: number;
+}
+
+// ==================================================
 // ERROR CONTRACT
 // ==================================================
 
