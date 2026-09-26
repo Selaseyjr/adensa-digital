@@ -120,7 +120,7 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-api.txt
 
       - name: Compile checks (compileall)
-        run: python -m compileall -q app/ streamlit_app.py tests/
+        run: python -m compileall -q app/ tests/
 
       # The pytest suite includes tests/test_database.py, which connects to
       # data/adensa.db at collection time. That file is git-ignored (*.db),

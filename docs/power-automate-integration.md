@@ -114,7 +114,7 @@ never reported as resolved.
   next successful poll re-reads current state (state-based, so
   no event is lost while the service was down).
 - **Power Automate unavailable** — Adensa functions normally;
-  approvals simply happen through the Streamlit UI or CLI.
+  approvals simply happen through the Next.js web client or CLI.
 
 ## Connectivity (prototype limitation)
 

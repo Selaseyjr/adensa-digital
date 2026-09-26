@@ -1,6 +1,6 @@
 # Adensa Digital
 
-Adensa Digital is a digital supply-chain exception-management prototype: a control tower that turns shipment exceptions into structured operational decisions and recorded outcomes. It models the full lifecycle an operations team actually works through — detect, assess, recommend, decide, execute or intervene, and record what happened — on top of a layered Python service architecture with a Streamlit operations UI, a secured FastAPI boundary, and a CLI.
+Adensa Digital is a digital supply-chain exception-management prototype: a control tower that turns shipment exceptions into structured operational decisions and recorded outcomes. It models the full lifecycle an operations team actually works through — detect, assess, recommend, decide, execute or intervene, and record what happened — on top of a layered Python service architecture with a Next.js operations client, a secured FastAPI boundary, and a CLI.
 
 ```text
 Detect → Assess → Recommend → Execute / Intervene → Outcome
@@ -33,9 +33,9 @@ Verified functionality in the current repository:
 - **Manual resolution** — when no system-generated option is feasible, a planner can record an externally negotiated intervention (method, external party, agreed resolution, optional revised delivery, outcome) as a distinct, auditable resolution path.
 - **Operational history** — a chronological, evidence-based timeline per exception: detection, option evaluation, decisions (with actor), executions, interventions and the current outcome.
 - **Control tower** — an at-a-glance operational summary: open exceptions split into actionable vs monitoring, pending decisions, actions awaiting execution, critical exceptions, and recently resolved outcomes with their resolution path.
-- **Clients over one boundary** — the Next.js operational client, the Streamlit reference UI, the FastAPI API and the CLI all consume the same application service layer; no client contains SQL or business rules.
+- **Clients over one boundary** — the Next.js operational client, the FastAPI API and the CLI all consume the same application service layer; no client contains SQL or business rules.
 - **Controlled data-arrival simulation** — a deterministic development mechanism that creates a new shipment arrival so the full pipeline (detect → recommend → decide → execute) can be demonstrated on demand.
-- **Automated testing** — 330+ tests covering repositories, services, engines, workflow lifecycles, the API contract, the Streamlit UI (Streamlit AppTest), the external integration contract and the SQLite↔PostgreSQL dialect boundary, all on isolated temporary databases.
+- **Automated testing** — 330+ tests covering repositories, services, engines, workflow lifecycles, the API contract, the external integration contract and the SQLite↔PostgreSQL dialect boundary, all on isolated temporary databases.
 - **CI** — GitHub Actions runs compile checks and the full SQLite test suite on every push, a PostgreSQL 16 service-container job runs the opt-in `pytest -m postgres` integration suite, and the Next.js client is typechecked, linted, unit-tested and built.
 
 ## Architecture
@@ -45,7 +45,6 @@ Adensa is a strictly layered application. The service layer is the application b
 ```mermaid
 flowchart TD
     WEB["Next.js operational client<br/>web/"] -->|"HTTPS / REST"| API
-    UI["Streamlit UI (reference client)<br/>app/main.py"] --> SVC
     API["FastAPI /v1 boundary<br/>app/api.py"] --> SVC
     CLI["CLI<br/>app/cli.py"] --> SVC
     SVC["Application services<br/>app/services.py"] --> ENG["Business engines<br/>detect / options / decision /<br/>workflow / execution / simulation"]
@@ -56,7 +55,7 @@ flowchart TD
 
 | Layer | Responsibility |
 |---|---|
-| Presentation (Next.js client / Streamlit / FastAPI / CLI) | Rendering, request handling, input validation. No SQL, no business rules. The Next.js client consumes only the versioned `/v1` API; Streamlit remains temporarily available as the reference client during the migration. |
+| Presentation (Next.js client / FastAPI / CLI) | Rendering, request handling, input validation. No SQL, no business rules. The Next.js client consumes only the versioned `/v1` API; the Streamlit reference client was retired (ADR-013). |
 | Application services | Orchestration, application-level projections (control tower, operational history), transaction boundaries for service-owned operations, typed error translation. |
 | Business engines | Domain rules: detection, option generation, decision scoring, workflow transitions, execution, simulation. |
 | Repositories | All SQL and data access. Read/write functions per aggregate; no business logic. |
@@ -134,8 +133,6 @@ The Next.js client (`web/`) consumes the `/v1` boundary only. Its TypeScript con
 
 `web/` contains the production-style Next.js operational client. It renders the Control Tower and the Exception Inbox work queue directly from the `/v1` API, with deliberate loading, API-unavailable, empty and contract-violation states. All data is fetched server-side; components never call `fetch` or build API URLs, and no business rules (metric populations, inbox ordering, workflow semantics) are recomputed in the client. See `web/README.md` for the architecture decisions and `web/.env.example` for configuration.
 
-Streamlit (`app/main.py`) remains temporarily available as the existing reference client during the migration and is unaffected by the new client.
-
 ## CLI
 
 The CLI (`app/cli.py`) provides terminal access to the same services:
@@ -154,7 +151,6 @@ The backend test suite (330+ pytest tests) runs entirely on isolated temporary d
 - **Service tests** — orchestration contracts: review, approval, rejection, execution outcomes, manual resolution, operational refresh, history.
 - **Engine and lifecycle tests** — detection rules, decision scoring, workflow transitions and idempotency, execution branches (resolved vs still open), bootstrap idempotence.
 - **API contract tests** — endpoint behavior, error mapping, and the `X-API-Key` security boundary (missing/invalid/unconfigured key, fail-closed behavior, no mutation on rejected requests).
-- **Streamlit AppTest tests** — the real UI executed headlessly: control-tower render, exception investigation, approval → execution, still-open honesty, rejection, manual resolution paths, resolved visibility, history, and the quiet-database state.
 - **Frontend tests** — the Next.js client under `web/` (vitest + msw): application shell, Control Tower and inbox rendering against the `/v1` contract, all four API-result states, exception selection, and a guard that no business-rule computation entered the client.
 - **Integration contract tests** — the exact request sequence an external orchestrator performs against the API (poll → select → review → decide → execute → read back → outcome), including timeout/re-read and duplicate-mutation protection.
 - **Database validation** — schema, foreign keys, referential integrity and shipment/event consistency validators.
@@ -177,9 +173,7 @@ Adensa itself does not send emails or Teams messages, and Power Automate never d
 ## Project structure
 
 ```text
-streamlit_app.py            # Streamlit entry point (initializes, then runs the UI)
 app/
-  main.py                   # Streamlit operations UI
   api.py                    # FastAPI boundary
   cli.py                    # CLI (workflow / decision / execution)
   services.py               # Application service layer (the application boundary)
@@ -207,7 +201,7 @@ web/                        # Next.js operational client (production-style front
   components/               # Presentation components (Server Components)
   lib/api/                  # The single network boundary (no fetch in components)
   lib/types/                # TypeScript mirror of the /v1 API contract
-tests/                      # 178 automated tests (pytest + Streamlit AppTest)
+tests/                      # Automated tests (pytest)
 ```
 
 ## Getting started
@@ -219,8 +213,8 @@ Requirements: Python 3.14.
 pip install -r requirements.txt
 pip install -r requirements-api.txt   # only needed to run the API
 
-# 2. Run the Streamlit application (reference client)
-streamlit run streamlit_app.py
+# 2. Run the API
+uvicorn app.api:app
 
 # 3. Run the Next.js operational client (see web/README.md)
 cd web && npm install && npm run dev   # requires the API running locally
@@ -277,8 +271,6 @@ No secrets are stored in the repository. `.env.example` at the repository root d
 **Architecture progression:**
 
 ```text
-Streamlit prototype
-        ↓
 service / domain architecture
         ↓
 versioned FastAPI application boundary   ← done (ADR-011)
@@ -290,7 +282,7 @@ SQLite (default) + PostgreSQL            ← done (P5)
 authentication / deployment hardening    ← future
 ```
 
-**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the remaining Next.js surfaces (administration), production PostgreSQL deployment (connection pooling, managed hosting, backups), production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities. The Next.js Investigation Workspace now drives the full workflow — approve, reject, execute and manual resolution go through server actions to the existing mutation contracts (ADR-011 compatibility paths), so a planner can complete Detect → Resolve without Streamlit.
+**Not implemented (future direction):** deployment of the actual Power Automate tenant flow, Teams/email notification delivery, enterprise identity (SSO / Microsoft Entra ID, OAuth/JWT, RBAC), the remaining Next.js surfaces (administration), production PostgreSQL deployment (connection pooling, managed hosting, backups), production cloud deployment and hardening, event-driven integrations at scale, and a real AI provider behind the advisory boundary. These are directions for future development, not current capabilities. The Next.js client drives the full operational workflow — detection through resolution — so a planner can complete Detect → Resolve entirely in the browser (the Streamlit reference client was retired; see ADR-013).
 
 ## Author
 

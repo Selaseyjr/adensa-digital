@@ -154,8 +154,9 @@ render live data; with the API down, surfaces render their deliberate
 CI runs typecheck, lint, tests and the production build for `web/`
 alongside the Python suite. A failing frontend build fails CI.
 
-## Relationship to the Streamlit client
+## Relationship to the retired Streamlit client
 
-Streamlit (`app/main.py`) remains temporarily available as the existing
-reference client during the migration. It is unaffected by this client;
-the two coexist against the same service layer.
+The original Streamlit reference client (`app/main.py`) was retired and
+removed from the repository (ADR-013) once every user-facing capability had
+a Next.js equivalent. This client is now the primary user-facing surface;
+the FastAPI `/v1` boundary and the CLI remain the non-browser access paths.

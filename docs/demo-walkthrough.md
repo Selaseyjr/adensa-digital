@@ -62,7 +62,11 @@ exception identifiers, but the same journey and the same behaviour.
 
 ```bash
 pip install -r requirements.txt
-streamlit run streamlit_app.py
+pip install -r requirements-api.txt
+uvicorn app.api:app
+
+# in a second terminal
+cd web && npm install && npm run dev
 ```
 
 On first run the application initializes its SQLite database
@@ -72,7 +76,7 @@ starts reuse the existing database.
 
 ### Simulate a shipment arrival
 
-In the sidebar, under **Simulation**, press
+In the web client, open **Operations** and press
 **Simulate Shipment Arrival**.
 
 This is a controlled data-arrival mechanism, not a random demo effect:
@@ -88,7 +92,7 @@ SHP-SIM-0001 arrived · 2 events recorded
 
 ### Refresh the operational pipeline
 
-In the sidebar, under **Operations**, press
+On the **Operations** page, press
 **Refresh Operations Pipeline**.
 
 This runs the real detection → options → actions pipeline over the
@@ -291,11 +295,13 @@ exception's Operational History.
 
 ## 5. Demo reproduction
 
-1. Install dependencies and start the UI:
-   `pip install -r requirements.txt` then `streamlit run streamlit_app.py`.
-2. Press **Simulate Shipment Arrival**.
-3. Press **Refresh Operations Pipeline**.
-4. Select the newly detected exception (auto-focused) in the
+1. Install dependencies and start the application:
+   `pip install -r requirements.txt`, `pip install -r requirements-api.txt`,
+   `uvicorn app.api:app`, then `cd web && npm install && npm run dev`.
+2. Press **Simulate Shipment Arrival** (Operations page).
+3. Press **Refresh Operations Pipeline** (Operations page).
+4. Select the newly detected exception (the Operations page links it
+   prominently after the refresh) in the
    **Exception Inbox**.
 5. Review the recommendation, approve as a named planner, execute.
 6. Observe the outcome panel: on the fresh bootstrap dataset the
@@ -316,8 +322,8 @@ Notes on what this demo is and is not:
   carrier integrations.
 - The journeys above were validated against an isolated database
   initialized through the application's real bootstrap, and the
-  UI-level lifecycle is covered by the automated Streamlit AppTest
-  suite; nothing in this document requires modifying production data.
+  API-level lifecycle is covered by the automated backend test suite;
+  nothing in this document requires modifying production data.
 
 ---
 
@@ -326,7 +332,7 @@ Notes on what this demo is and is not:
 The demo is the layered architecture, visible end to end:
 
 ```text
-Streamlit / FastAPI / CLI
+Next.js web client / FastAPI / CLI
         ↓
 Application Services      (app/services.py — the application boundary)
         ↓
@@ -337,9 +343,9 @@ Repositories              (all SQL / data access)
 SQLite
 ```
 
-The Streamlit UI is a pure service consumer: it contains no SQL, no
-repository access and no business rules. The FastAPI service and the
-CLI are sibling clients of the same service layer, and the API is the
+The Next.js client is a pure API consumer: it contains no SQL, no
+repository access and no business rules. The CLI is a sibling client of
+the same service layer, and the API is the
 boundary used by external orchestration:
 
 ```text
