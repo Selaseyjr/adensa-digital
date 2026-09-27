@@ -2,11 +2,11 @@
 Application service layer.
 
 Owns the application/workflow orchestration that previously
-lived in the Streamlit UI (app/main.py):
+lived in the Streamlit reference client (retired, ADR-013):
 
-    Streamlit UI
+    Next.js UI
          ↓
-      main.py
+    FastAPI (app/api) / CLI (app/cli)
          ↓
       services        ← this module
          ↓
@@ -14,7 +14,7 @@ lived in the Streamlit UI (app/main.py):
          ↓
     repositories
          ↓
-       SQLite
+   SQLite / PostgreSQL
 
 Rules:
 
@@ -22,8 +22,8 @@ Rules:
   application-level result dictionaries for any frontend.
 - Business rules stay in the engines; this module never
   duplicates them.
-- No Streamlit imports and no UI strings: the UI consumes
-  the returned dictionaries.
+- No UI imports and no UI strings: clients consume the
+  returned dictionaries.
 - No commits and no transaction management: transaction
   boundaries remain exactly where they were (inside the
   engine operations).

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # ==================================================
 #
 # The single connection boundary for every entry point
-# (FastAPI, Streamlit, CLI, tests). Everything above this
+# (FastAPI, CLI, tests). Everything above this
 # layer receives a connection and never constructs one, so
 # the backend becomes an implementation detail here.
 #

@@ -83,7 +83,7 @@ def database_contains_operational_data():
     data required for the application to function.
 
     This prevents the bootstrap process from regenerating
-    the database every time Streamlit reruns the application.
+    the database every time the application reruns.
     """
     if not database_schema_exists():
         return False

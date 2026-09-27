@@ -3,7 +3,7 @@ Advisory AI decision-support layer.
 
 Position in the architecture:
 
-    Streamlit / API / CLI
+    Web UI / API / CLI
          ↓
       services
          ↓

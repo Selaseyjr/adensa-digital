@@ -3,10 +3,10 @@ HTTP boundary for the Adensa Digital application services.
 
 This module is a thin FastAPI client of app.services — the
 third consumer of the same application layer alongside the
-Streamlit UI (app/main.py) and the terminal CLI (app/cli.py):
+web UI (the Next.js client) and the terminal CLI (app/cli.py):
 
-    Streamlit UI ──────┐
-                       ├─→ services → engines → repositories → SQLite
+    Next.js UI ────────┐
+                       ├─→ services → engines → repositories → SQLite/PostgreSQL
     FastAPI (app/api) ─┘
     CLI (app/cli) ─────┘
 

@@ -62,7 +62,7 @@ export type WorkspaceData = {
   latestAction: Awaited<ReturnType<typeof getLatestRecoveryAction>>;
 };
 
-export async function loadInvestigationData(
+async function loadInvestigationData(
   exceptionId: string,
 ): Promise<WorkspaceData> {
   return {
