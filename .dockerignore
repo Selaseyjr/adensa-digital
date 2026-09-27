@@ -1,0 +1,37 @@
+# Adensa Digital — Docker build-context exclusions (P10.2).
+# The backend image is runtime-only: no secrets, no dev
+# database copies, no test/browser artifacts ever enter the
+# build context.
+
+# Version control and agent workspace
+.git
+.gitignore
+.freebuff/
+
+# Secrets and environment files — never baked into images
+.env
+.env.*
+!.env.example
+
+# Local development databases and backups
+data/
+
+# Python artifacts
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Tests and documentation (runtime image carries app/ only)
+tests/
+docs/
+*.md
+requirements-dev.txt
+
+# Frontend — separate deployment (Vercel), never in this image
+web/
+
+# CI and editor configuration
+.github/
+.devcontainer/

@@ -9,6 +9,12 @@ development.
 > by the CI pipeline and the local/PostgreSQL test suites — as
 > part of the production-style graduation path. It is not a
 > record of a running service.
+>
+> **P10.2 update:** the deployment packaging is now in the
+> repository — a backend `Dockerfile`, `.dockerignore`, and
+> `fly.toml` for the approved managed topology below. Platform
+> accounts, secrets, and the external deployment steps are the
+> remaining work; no service is running yet.
 
 ## Architecture
 
@@ -29,6 +35,33 @@ PostgreSQL (production target) / SQLite (local default)
 The frontend performs all API access in Server Components;
 the API origin and the machine credential never reach the
 browser.
+
+## Deployed topology (P10.2 — managed platforms)
+
+The approved production topology maps the architecture above
+onto three managed services, selected for a small professional
+deployment with minimal operational surface:
+
+```text
+Vercel  — Next.js frontend (server-rendered client)
+   ↓ server-to-server HTTPS (X-API-Key)
+Fly.io  — FastAPI API (Dockerfile, fly.toml, one always-on machine)
+   ↓
+Neon    — PostgreSQL 16 (DATABASE_URL DSN, secrets-injected)
+```
+
+| Concern | Practice in this topology |
+|---|---|
+| Frontend hosting | Vercel project rooted at `web/` (zero-config Next.js); `API_BASE_URL`/`API_KEY` set as server-side project env vars |
+| API hosting | Fly.io machine built from the repository `Dockerfile`; `fly.toml` pins `min_machines_running = 1` (no scale-to-zero sleep mid-demo) and probes `/ready` |
+| Database | Neon PostgreSQL; DSN injected as `DATABASE_URL`; migrations applied by the Fly release command (`python -m app.database`) before each deploy's traffic cutover |
+| Secrets | `DATABASE_URL`, `ADENSA_API_KEY` via `fly secrets set`; frontend values via Vercel encrypted env vars; never committed (`.dockerignore` and `.gitignore` guard all `.env` files and `data/`) |
+| CORS | `ADENSA_CORS_ORIGINS` set to the Vercel frontend origin on the Fly app |
+| Scaling | One API machine is sufficient for the demonstration workload; the API is stateless (per-request connections), so horizontal scale is a `fly scale count` away |
+
+The repository artifacts (`Dockerfile`, `.dockerignore`,
+`fly.toml`) contain configuration shapes only — no DSNs, no
+keys, no operational data.
 
 ## Environments: local ≠ CI ≠ production
 
