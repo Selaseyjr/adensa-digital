@@ -516,3 +516,55 @@ def test_exception_to_recovery_action_lifecycle(postgres_database):
         assert outcome["exception_status"] == "Open"
     finally:
         connection.close()
+
+
+# ==================================================
+# ENTRY POINT (python -m app.database)
+# ==================================================
+
+
+def test_module_entry_point_migrates_fresh_postgres_database(
+    postgres_database,
+):
+    """
+    Regression (P10.2): `python -m app.database` — the release
+    entry point — migrates a fresh PostgreSQL database.
+
+    Under -m the module executes twice (as __main__ and as
+    app.database); a connection built by the __main__ copy once
+    carried a duplicate PostgresConnectionAdapter class, so the
+    runner's isinstance dispatch selected the SQLite PRAGMA
+    version store and crashed on PostgreSQL. The entry point
+    initializes through the canonical module identity instead,
+    which this test exercises as a real subprocess — the exact
+    scenario that failed against the hosted database.
+    """
+
+    import subprocess
+    import sys
+
+    from app.migrations import CURRENT_VERSION, get_schema_version
+
+    result = subprocess.run(
+        [sys.executable, "-m", "app.database"],
+        env=dict(os.environ),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, (
+        "python -m app.database failed on PostgreSQL: "
+        f"{result.stderr}"
+    )
+
+    # The entry point's own success log (stderr: logging's
+    # default stream).
+    assert "initialized successfully" in result.stderr
+
+    connection = postgres_database.get_connection()
+
+    try:
+        assert get_schema_version(connection) == CURRENT_VERSION
+    finally:
+        connection.close()

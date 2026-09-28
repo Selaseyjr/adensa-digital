@@ -19,6 +19,13 @@ primary_region = "fra"
 [build]
   # Build from the repository's root Dockerfile.
 
+[deploy]
+  # Migrations run here, before the new release receives
+  # traffic — the API process itself verifies and never
+  # migrates (ADR-012). The command targets the same app
+  # image; it needs DATABASE_URL (injected as a secret) and
+  # the PostgreSQL driver (baked into the image).
+  release_command = "python -m app.database"
 [env]
   # Configuration NAMES only — values are injected as Fly
   # secrets at deploy time (fly secrets set ...), never

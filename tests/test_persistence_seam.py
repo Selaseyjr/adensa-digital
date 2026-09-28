@@ -297,6 +297,53 @@ def test_version_backend_for_sqlite_connection_is_pragma_based():
         connection.close()
 
 
+def test_module_entry_point_uses_canonical_identity(tmp_path, monkeypatch):
+    """
+    The `python -m app.database` entry point initializes through
+    the canonical module identity, never the __main__ copy.
+
+    Running the module with -m executes the file twice — once as
+    __main__, once as app.database. A connection created by the
+    __main__ copy would carry a duplicate PostgresConnectionAdapter
+    class that migrations' isinstance-based version-backend dispatch
+    cannot recognize, silently selecting the SQLite PRAGMA store on
+    PostgreSQL (the failure found on Neon, P10.2). The entry point
+    must therefore call app.database.initialize_database() — the
+    single identity migrations.py imports.
+
+    This test pins the callable contract on SQLite; the PostgreSQL
+    subprocess regression lives in test_postgres_integration.py.
+    """
+
+    database_file = tmp_path / "entry_point.db"
+
+    import sys
+
+    if sys.platform.startswith("win"):
+        url = "sqlite:///" + str(database_file).replace("\\", "/")
+    else:
+        url = "sqlite:///" + str(database_file)
+
+    monkeypatch.setenv("DATABASE_URL", url)
+
+    # The exact dispatch the __main__ block performs: resolve the
+    # canonical module and initialize through it.
+    import app.database
+
+    canonical = sys.modules["app.database"]
+
+    assert canonical.initialize_database.__module__ == "app.database"
+
+    canonical.initialize_database()
+
+    connection = database.get_connection()
+
+    try:
+        assert get_schema_version(connection) == CURRENT_VERSION
+    finally:
+        connection.close()
+
+
 def test_current_sqlite_database_remains_strict_noop(tmp_path, monkeypatch):
     """
     The current-database guarantee survives the refactor: a

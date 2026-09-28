@@ -299,5 +299,19 @@ def initialize_database():
 
 if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO)
-    initialize_database()
+
+    # Initialize through the canonical module identity, never
+    # the __main__ copy defined above: `python -m app.database`
+    # executes this file twice (once as __main__, once as
+    # app.database), and a connection built by the __main__ copy
+    # would carry a duplicate PostgresConnectionAdapter class —
+    # one migrations.py's isinstance-based version-backend
+    # dispatch cannot recognize, so the PostgreSQL path would
+    # select the SQLite PRAGMA version store and fail. Importing
+    # the module by its real name guarantees a single adapter
+    # class across the process (regression-tested in
+    # tests/test_postgres_integration.py).
+    import app.database
+
+    app.database.initialize_database()
     logger.info("Adensa Digital database initialized successfully.")
