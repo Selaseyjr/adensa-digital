@@ -3,18 +3,20 @@
 Operational guidance for running the system outside local
 development.
 
-> **Status:** Adensa Digital is **not currently deployed** to
-> any production environment. This document describes the
-> deployment model the architecture is prepared for — verified
-> by the CI pipeline and the local/PostgreSQL test suites — as
+> **Status:** Adensa Digital is **not yet deployed** to any
+> production environment. This document describes the approved
+> production topology the repository is packaged for — the
+> containers, configuration boundaries, and sequencing — as
 > part of the production-style graduation path. It is not a
 > record of a running service.
 >
-> **P10.2 update:** the deployment packaging is now in the
-> repository — a backend `Dockerfile`, `.dockerignore`, and
-> `fly.toml` for the approved managed topology below. Platform
-> accounts, secrets, and the external deployment steps are the
-> remaining work; no service is running yet.
+> **P10.3 update:** the application layer is now packaged for
+> **Google Cloud Run** — a frontend `web/Dockerfile` joins the
+> backend `Dockerfile` (P10.2), and migrations run as an
+> explicit Cloud Run Job instead of a platform release hook.
+> The Fly.io configuration is **temporary/legacy** during the
+> migration and will be removed only after the Google Cloud
+> deployment is proven (see "Fly.io migration note" below).
 
 ## Architecture
 
@@ -36,42 +38,83 @@ The frontend performs all API access in Server Components;
 the API origin and the machine credential never reach the
 browser.
 
-## Deployed topology (P10.2 — managed platforms)
+## Deployed topology (P10.3 — Google Cloud + Neon)
 
-The approved production topology maps the architecture above
-onto three managed services, selected for a small professional
-deployment with minimal operational surface:
+The approved production topology runs the application layer on
+**Google Cloud** and the database on **Neon PostgreSQL** —
+a managed PostgreSQL service, keeping the existing persistence
+abstraction and ADR-012 migration model unchanged:
 
 ```text
-Vercel  — Next.js frontend (server-rendered client)
-   ↓ server-to-server HTTPS (X-API-Key)
-Fly.io  — FastAPI API (Dockerfile, fly.toml, one always-on machine)
+Public domain
    ↓
-Neon    — PostgreSQL 16 (DATABASE_URL DSN, secrets-injected)
+Google Cloud
+   ├─ Cloud Run: adensa-web        — Next.js frontend
+   ├─ Cloud Run: adensa-api        — FastAPI backend (/v1)
+   ├─ Cloud Run Job: adensa-migrations — schema migrations
+   ├─ Artifact Registry            — container images
+   ├─ Secret Manager               — credentials
+   └─ IAM                          — least-privilege service accounts
+   ↓
+Neon PostgreSQL (managed; DSN injected as DATABASE_URL)
 ```
 
-| Concern | Practice in this topology |
-|---|---|
-| Frontend hosting | Vercel project rooted at `web/` (zero-config Next.js); `API_BASE_URL`/`API_KEY` set as server-side project env vars |
-| API hosting | Fly.io machine built from the repository `Dockerfile`; `fly.toml` pins `min_machines_running = 1` (no scale-to-zero sleep mid-demo) and probes `/ready` |
-| Database | Neon PostgreSQL; DSN injected as `DATABASE_URL`; migrations applied by the Fly release command (`python -m app.database`) before each deploy's traffic cutover |
-| Secrets | `DATABASE_URL`, `ADENSA_API_KEY` via `fly secrets set`; frontend values via Vercel encrypted env vars; never committed (`.dockerignore` and `.gitignore` guard all `.env` files and `data/`) |
-| CORS | `ADENSA_CORS_ORIGINS` set to the Vercel frontend origin on the Fly app |
-| Scaling | One API machine is sufficient for the demonstration workload; the API is stateless (per-request connections), so horizontal scale is a `fly scale count` away |
+Cloud Run region: **`europe-west3` (Frankfurt)** — matching the
+Neon project region (`eu-central-1`) so database round-trips
+stay local.
 
-The repository artifacts (`Dockerfile`, `.dockerignore`,
-`fly.toml`) contain configuration shapes only — no DSNs, no
-keys, no operational data.
+### Service responsibilities
+
+| Service | Responsibility |
+|---|---|
+| `adensa-web` | Serves the Next.js application (server-rendered pages and client islands). Performs all API access server-side against `adensa-api`; the browser never sees the API origin or credentials. Built from `web/Dockerfile`. |
+| `adensa-api` | Serves the FastAPI `/v1` application boundary. Stateless, per-request database connections. Built from the root `Dockerfile`. Verifies — never migrates (ADR-012). |
+| `adensa-migrations` | A Cloud Run **Job** running the same backend image with the command `python -m app.database`. Applies the migration history idempotently. Run explicitly before each API revision that follows a schema change. |
+
+Artifact Registry stores the images; Cloud Build builds them
+(`gcloud builds submit` — the container validation path when no
+local Docker exists). Secret Manager holds the credentials;
+IAM service accounts grant each service access only to the
+secrets it needs.
+
+## Deployment sequence
+
+The ordering below preserves the architecture's invariant:
+**migrations run before new API code accepts traffic, and the
+API process itself never migrates (ADR-012).**
+
+```text
+1. Build image(s)            →  gcloud builds submit (Cloud Build → Artifact Registry)
+2. Update migration Job      →  point adensa-migrations at the new image
+3. Execute migration Job     →  gcloud run jobs execute adensa-migrations --wait
+4. Wait for Job success      →  Job exits 0 (idempotent; a no-op when current)
+5. Deploy API revision       →  gcloud run deploy adensa-api (new revision)
+6. Verify /ready             →  200 {"status":"ready","database":"ok"}
+7. Deploy web                →  gcloud run deploy adensa-web
+8. End-to-end verification   →  pages, KPI deep links, one real mutation
+```
+
+> **Cloud Run does not automatically execute the migration Job
+> before every service revision.** Unlike a platform release
+> hook, a Cloud Run Job is invoked only when orchestration
+> explicitly runs it. Deployment automation must therefore run
+> `gcloud run jobs execute adensa-migrations --wait` between
+> "build image" and "deploy API revision" every time the image
+> may contain schema changes. Deploying an API revision whose
+> schema expectations are ahead of the database is safe by
+> design — `/ready` reports `503 schema-outdated` and the old
+> revision's traffic is held back — but the correct sequence
+> keeps the Job execution in the loop.
 
 ## Environments: local ≠ CI ≠ production
 
-| | Local development | CI | Future production |
+| | Local development | CI | Production (target) |
 |---|---|---|---|
-| Database | SQLite (`data/adensa.db`, default) | Disposable SQLite + a PostgreSQL 16 service container | PostgreSQL server, configuration-driven |
-| Secrets | None required; synthetic/empty values | None; synthetic test keys inside the test session | Real values injected via the environment/secret store — never in source |
-| Migrations | `python -m app.database` / bootstrap | Bootstrap of a throwaway dev DB; integration tests migrate temporary databases | Applied by the operator/bootstrap **before** API startup |
-| API server | `uvicorn app.api:app` (localhost) | TestClient (in-process) | A production ASGI server invocation (below) behind TLS |
-| Frontend | `npm run dev`, fallback API origin | `npm run build` gate | `npm run build && npm run start` with explicit `API_BASE_URL` |
+| Database | SQLite (`data/adensa.db`, default) | Disposable SQLite + a PostgreSQL 16 service container | Neon PostgreSQL, configuration-driven |
+| Secrets | None required; synthetic/empty values | None; synthetic test keys inside the test session | Real values in Secret Manager / Cloud Run config — never in source |
+| Migrations | `python -m app.database` / bootstrap | Bootstrap of a throwaway dev DB; integration tests migrate temporary databases | The `adensa-migrations` Cloud Run Job (above) |
+| API server | `uvicorn app.api:app` (localhost) | TestClient (in-process) | Container CMD binding Cloud Run's `$PORT` |
+| Frontend | `npm run dev`, fallback API origin | `npm run build` gate | Container build + `next start` on Cloud Run's `$PORT` |
 
 ## Environment variables
 
@@ -79,105 +122,161 @@ Backend (see `.env.example` at the repository root):
 
 | Variable | Purpose | Production requirement |
 |---|---|---|
-| `DATABASE_URL` | Backend selection: absent = SQLite default; `sqlite:///…` = explicit path; `postgresql://…` = PostgreSQL (requires `requirements-postgres.txt`) | **Required** — set to the PostgreSQL DSN |
-| `ADENSA_API_KEY` | Machine credential for every operational endpoint; unconfigured = fail-closed (503) | **Required** — high-entropy per-environment value |
-| `ADENSA_CORS_ORIGINS` | Browser origins allowed to call the API; comma-separated; empty = none trusted | Set to the frontend's origin(s); never `*` |
+| `DATABASE_URL` | Backend selection: `postgresql://…` = PostgreSQL (requires `requirements-postgres.txt`) | **Secret Manager** — the Neon DSN (pooled endpoint for the service; see migration note below) |
+| `ADENSA_API_KEY` | Machine credential for every operational endpoint; unconfigured = fail-closed | **Secret Manager** — high-entropy per-environment value |
+| `ADENSA_CORS_ORIGINS` | Browser origins allowed to call the API; comma-separated; empty = none trusted | **Runtime environment variable** — the frontend's Cloud Run URL; never `*` |
 
 Frontend (`web/.env.example`):
 
 | Variable | Purpose | Production requirement |
 |---|---|---|
-| `API_BASE_URL` | Server-side origin of the FastAPI `/v1` boundary | **Required** — there is a deliberate localhost fallback for development only; relying on it in production warns loudly at startup and is a configuration error |
-| `API_KEY` | Machine credential the Next server presents to the API | **Required** in production — same value the API server receives as `ADENSA_API_KEY` |
+| `API_BASE_URL` | Server-side origin of the FastAPI `/v1` boundary | **Runtime environment variable** — the `adensa-api` Cloud Run URL |
+| `API_KEY` | Machine credential the Next server presents to the API | **Runtime-only web-service secret** (Secret Manager reference) — same value the API server receives as `ADENSA_API_KEY` |
 
 Both frontend variables are deliberately **not**
 `NEXT_PUBLIC_`-prefixed: they are read only on the Node server
 and never ship to the browser.
 
-## Database configuration and migration sequence
+**Build-time boundary:** `API_KEY` must **never** be baked into
+a Docker image, passed as a Docker build ARG, or exposed during
+image build. The frontend image intentionally contains no API
+configuration at all: the Next.js build executes no API calls
+(all fetches are `cache: "no-store"`), so no build ARG exists
+for either variable — configuration is injected by Cloud Run
+at container start only.
 
-One migration history serves both backends (ADR-012); the
-PostgreSQL rendering of the same DDL resolves the dialect and
-type decisions documented in `app/pg_compat.py`.
+## Secret boundaries
 
-```text
-1. Provision the database (PostgreSQL server / SQLite file)
-2. Apply migrations          →  python -m app.database
-   (bootstrap/CLI responsibility — the API never migrates)
-3. Start the API             →  startup verification runs
-4. /ready reports readiness  →  deploy/route traffic
-```
+| Secret | Mechanism | Consumer |
+|---|---|---|
+| `DATABASE_URL` | Secret Manager | `adensa-api`, `adensa-migrations` |
+| `ADENSA_API_KEY` | Secret Manager | `adensa-api` |
+| `API_KEY` | Secret Manager (same value as `ADENSA_API_KEY`) | `adensa-web` (runtime only — never in the image, never a build ARG) |
+| `ADENSA_CORS_ORIGINS` | Plain Cloud Run env var (not secret-sensitive) | `adensa-api` |
+| `API_BASE_URL` | Plain Cloud Run env var (not secret-sensitive) | `adensa-web` |
 
-The recorded schema version must equal `CURRENT_VERSION`
-before the API accepts traffic.
-
-## API startup verification (P6.2)
-
-At startup the API opens one connection through the
-persistence abstraction, verifies the database is reachable
-and the schema is current, closes the connection, and fails
-fast — with a redacted (credential-free) log line — when the
-required state cannot be established. It verifies; it never
-migrates.
-
-## Health and readiness
+## API health and readiness contract
 
 | Endpoint | Meaning | Auth | Failure behavior |
 |---|---|---|---|
 | `/health` | Process liveness | Public | — |
 | `/ready` | Database reachable **and** schema current | Public, minimal response | `503 {"status": "degraded", "database": "schema-outdated"}` |
 
-Probe `/health` for restart decisions and `/ready` for
-traffic-routing decisions. Responses never expose database
-internals, connection details, or credentials.
+On Cloud Run, `/ready` is the **startup probe** target for
+`adensa-api`: a revision receives traffic only once the API has
+verified its database state. `/health` serves liveness
+restarts. Responses never expose database internals,
+connection details, or credentials.
 
-## FastAPI production invocation
+## Neon PostgreSQL considerations
 
-Development uses `uvicorn app.api:app`. For production-style
-invocation, bind explicitly and size workers to the
-deployment:
+The persistence layer (psycopg 3 via `app/pg_compat.py`) talks
+to Neon exactly as to any PostgreSQL 16+ server.
 
-```bash
-pip install -r requirements.txt -r requirements-api.txt -r requirements-postgres.txt
-export DATABASE_URL="postgresql://…"      # injected, not committed
-export ADENSA_API_KEY="…"                 # injected, not committed
-export ADENSA_CORS_ORIGINS="https://adensa.example.org"  # illustrative shape, not a real deployment
-uvicorn app.api:app --host 0.0.0.0 --port 8000 --workers 2
-```
+- **Pooled endpoint (PgBouncer transaction mode).** The
+  `adensa-api` service uses Neon's *pooled* DSN: Cloud Run can
+  scale instances up and down without exhausting PostgreSQL
+  connections. The application opens short-lived per-request
+  connections with no server-side prepared statements, which
+  is the access pattern transaction pooling supports.
+- **Direct endpoint fallback for the migration Job.** The
+  `adensa-migrations` Job runs as a single process; if the
+  pooled endpoint ever interferes with migration-session
+  semantics, switch the Job's `DATABASE_URL` secret to Neon's
+  *direct* (unpooled) endpoint — one connection, full session
+  semantics, no pooling benefit lost.
+- **Scale-to-zero.** Neon's compute suspends after inactivity
+  (tier-dependent). For a demonstration or low-traffic
+  deployment, either disable suspension or warm the database
+  before the session. Cloud Run `min instances` addresses our
+  cold starts, not Neon's.
 
-The API is a stateless HTTP service (per-request database
-connections); horizontal scale is a matter of running more
-processes behind the proxy. No worker/queue infrastructure is
-required at this scale.
+## Cloud Run instance configuration
 
-## Next.js production build and start
+**Initial deployment settings subject to verification — not
+permanent guarantees.** Size from observed behaviour after
+deployment; these are starting points:
 
-```bash
-cd web
-npm ci
-API_BASE_URL="https://api.example.org" API_KEY="…" npm run build
-API_BASE_URL="https://api.example.org" API_KEY="…" npm run start
-```
+| Setting | `adensa-api` | `adensa-web` | `adensa-migrations` |
+|---|---|---|---|
+| CPU / memory | 1 vCPU / 512Mi | 1 vCPU / 512Mi | 1 vCPU / 512Mi |
+| Min instances | **1** | 0 (raise to 1 for demo stability) | — (Job) |
+| Max instances | 2 | 3 | — |
+| Concurrency | 80 | 80 | — |
 
-The variables must be present in the server process
-environment at both build and run time. A production start
-without `API_BASE_URL` logs a loud warning and targets the
-development fallback — treat that as a deployment failure.
+**Why `min instances = 1` on the API initially:** the frontend
+renders every page server-side through API calls, so a
+scale-to-zero API turns the first user request into a double
+cold start (instance start + startup verification). One always
+warm instance keeps the operational surface responsive and
+predictable — the same demo-stability decision the Fly
+configuration encoded (`min_machines_running = 1`). The API is
+stateless (per-request connections), so additional instances
+scale safely if traffic demands.
 
-## TLS / reverse-proxy boundary
+## Custom-domain strategy
 
-Terminate TLS at a reverse proxy (for example nginx, Caddy,
-or a platform load balancer) and forward to the two services:
+The production custom domain terminates at **Google's
+recommended global external Application Load Balancer** with a
+managed certificate, routing to the two Cloud Run services
+(serverless NEG backends). Direct Cloud Run domain mapping is
+acceptable for provisional access during bring-up but is **not
+the final production architecture** — it does not provide the
+global anycast entry point, centralized certificate management,
+or the path-based routing an Application Load Balancer offers.
 
-```text
-Browser ──HTTPS──▶ proxy ──▶ Next.js server (frontend)
-                        └──▶ uvicorn (FastAPI API)
-```
+## Why this topology needs no further Google Cloud infrastructure
 
-The browser talks only to the frontend; the frontend's API
-calls are server-to-server. CORS on the API remains restricted
-to configured origins. TLS details and certificate management
-belong to the proxy, not the application.
+- **No Cloud SQL** — PostgreSQL is provided by Neon; the
+  application reaches it over TLS via its public DSN. Cloud SQL
+  would duplicate the database and break the single-source
+  persistence contract.
+- **No VPC connector / Serverless VPC Access** — Cloud Run
+  services connect to Neon over the public internet with TLS
+  (`sslmode=require`); there is no private-network resource to
+  reach. The frontend→API hop is also public Cloud Run HTTPS
+  with the `X-API-Key` boundary.
+- **No GKE** — two stateless HTTP services and a one-shot Job
+  are exactly Cloud Run's model; Kubernetes would add cluster
+  operations with no benefit at this scale.
+
+## Security principles and service accounts
+
+Least privilege, per service:
+
+| Identity | Granted | Not granted |
+|---|---|---|
+| `adensa-api-sa` | `secretAccessor` on `DATABASE_URL` + `ADENSA_API_KEY` | Access to `API_KEY`, any other project secrets, deployment roles |
+| `adensa-web-sa` | `secretAccessor` on `API_KEY` | Access to `DATABASE_URL` or any API-side secret |
+| `adensa-migrations` | reuses `adensa-api-sa` | Deployment roles |
+| Deployer (human/CI identity) | `run.admin`, `artifactregistry.writer`, `secretManager.admin` on the project scope | — |
+
+The application-layer security model is unchanged: the
+prototype `X-API-Key` machine credential (ADR-008) with
+fail-closed behaviour and constant-time comparison — machine
+authentication, **not** user authentication (see the
+limitations section at the end of this document). All API
+access from the browser path is server-to-server; the browser
+never receives the API origin or the credential.
+
+## Image builds: Cloud Build + Artifact Registry
+
+`gcloud builds submit` builds both images from the repository's
+Dockerfiles (no local Docker required) and pushes them to
+Artifact Registry. Images are the deployable unit for all three
+services: `adensa-web` from `web/Dockerfile`; `adensa-api` and
+the `adensa-migrations` Job from the root `Dockerfile` (the Job
+overrides the container command). Neither image contains
+secrets, credentials, or operational data — packaging is
+configuration-shape only.
+
+## Fly.io migration note
+
+The `fly.toml` and the original P10.2 Fly/Vercel topology are
+**temporary/legacy deployment configuration** retained during
+the migration. They will be removed only after the Google Cloud
+deployment is proven end-to-end; until then they must not be
+treated as the production path.
 
 ## API-key security limitation
 
@@ -193,9 +292,8 @@ server-side callers — it is **not** user authentication:
   tied to individuals;
 - a leaked key grants full operational access until rotated.
 
-Treat the key as a deployment secret (injected via the
-environment or a secret store, rotated on schedule, never
-committed or logged).
+Treat the key as a deployment secret (Secret Manager, rotated
+on schedule, never committed or logged).
 
 ## Future authentication path
 
