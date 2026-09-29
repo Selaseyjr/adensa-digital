@@ -47,7 +47,7 @@
  *   support (month-span labelling).
  */
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   AnalyticsOverview,
@@ -60,6 +60,73 @@ import {
   BarChart,
   type BarChartEntry,
 } from "@/components/control-tower/BarChart";
+
+/**
+ * P12.2 hover/focus readout for the line charts. Pure
+ * presentation: the handler maps the pointer position to the
+ * NEAREST REAL OBSERVATION already rendered by the chart —
+ * no interpolation, no invented points, no arithmetic beyond
+ * geometry. Geometry constants mirror LineChart's viewBox
+ * (W=480, H=300, PAD top 16/right 24/bottom 36/left 46);
+ * the y scale uses the chart's yMax so count series read
+ * correctly. Values are formatted with the chart's own
+ * formatter so the readout can never disagree with the data
+ * table.
+ */
+function useChartReadout(
+  points: LineChartPoint[],
+  format: (value: number) => string,
+  yMax: number | undefined,
+  dotRef: React.RefObject<SVGCircleElement | null>,
+  valueRef: React.RefObject<SVGTextElement | null>,
+) {
+  const top = yMax ?? 100;
+  return useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const dot = dotRef.current;
+      const valueEl = valueRef.current;
+      if (!dot || !valueEl || points.length === 0) return;
+      const svg = event.currentTarget.querySelector("svg");
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const W = 480;
+      const H = 300;
+      const PAD_LEFT = 46;
+      const PAD_RIGHT = 24;
+      const PAD_TOP = 16;
+      const PAD_BOTTOM = 36;
+      const innerW = W - PAD_LEFT - PAD_RIGHT;
+      const innerH = H - PAD_TOP - PAD_BOTTOM;
+      const xInViewBox =
+        ((event.clientX - rect.left) / rect.width) * W;
+      // Nearest observation by index (points are evenly spaced
+      // across the plot; this mirrors LineChart's own geometry).
+      const step =
+        points.length === 1 ? 0 : innerW / (points.length - 1);
+      const idx = Math.min(
+        points.length - 1,
+        Math.max(0, Math.round((xInViewBox - PAD_LEFT) / (step || 1))),
+      );
+      const point = points[idx];
+      if (!point || point.value === null || !Number.isFinite(point.value)) {
+        dot.style.opacity = "0";
+        valueEl.style.opacity = "0";
+        return;
+      }
+      const cx =
+        points.length === 1 ? PAD_LEFT + innerW / 2 : PAD_LEFT + idx * step;
+      const cy = PAD_TOP + innerH * (1 - point.value / top);
+      dot.setAttribute("cx", String(cx));
+      dot.setAttribute("cy", String(cy));
+      valueEl.setAttribute("x", String(cx));
+      valueEl.setAttribute("y", String(Math.max(cy - 12, PAD_TOP + 10)));
+      valueEl.textContent = format(point.value);
+      dot.style.opacity = "1";
+      valueEl.style.opacity = "1";
+    },
+    [points, format, top, dotRef, valueRef],
+  );
+}
 
 /** Coverage-honest month-span label, derived purely from the
  * returned points: a contiguous series renders as a range; a
@@ -164,7 +231,7 @@ function renderVariable(
               No recorded observations yet.
             </p>
           ) : (
-            <LineChart
+            <LinePanel
               points={chartPoints}
               titleId={HEADING_IDS.service_performance}
               describedById="service-performance-basis"
@@ -196,7 +263,7 @@ function renderVariable(
               No recorded observations yet.
             </p>
           ) : (
-            <LineChart
+            <LinePanel
               points={chartPoints}
               titleId={HEADING_IDS.shipment_volume}
               describedById="shipment-volume-basis"
@@ -238,7 +305,7 @@ function renderVariable(
               No recorded observations yet.
             </p>
           ) : (
-            <LineChart
+            <LinePanel
               points={chartPoints}
               titleId={HEADING_IDS.exception_incidence}
               describedById="exception-incidence-basis"
@@ -346,6 +413,58 @@ function VariablePanel({
         {basisFor(variable.id, overview)}
       </span>
     </article>
+  );
+}
+
+/** The line-chart panel wrapper: attaches the P12.2 hover
+ * readout to the rendered SVG. The chart primitive stays
+ * dependency-free; the readout is layered on by this client
+ * wrapper, which owns the two element refs. */
+function LinePanel({
+  points,
+  titleId,
+  describedById,
+  valueLabel,
+  unit,
+  yMax,
+  gridStep,
+  formatValue,
+}: {
+  points: LineChartPoint[];
+  titleId: string;
+  describedById: string;
+  valueLabel: string;
+  unit?: string;
+  yMax?: number;
+  gridStep?: number;
+  formatValue?: (value: number) => string;
+}) {
+  const dotRef = useRef<SVGCircleElement | null>(null);
+  const valueRef = useRef<SVGTextElement | null>(null);
+  const format = formatValue ?? ((value: number) => `${value}${unit ?? "%"}`);
+  const onPointerMove = useChartReadout(points, format, yMax, dotRef, valueRef);
+
+  return (
+    <div
+      onPointerMove={onPointerMove}
+      onPointerLeave={() => {
+        if (dotRef.current) dotRef.current.style.opacity = "0";
+        if (valueRef.current) valueRef.current.style.opacity = "0";
+      }}
+    >
+      <LineChart
+        points={points}
+        titleId={titleId}
+        describedById={describedById}
+        valueLabel={valueLabel}
+        unit={unit}
+        yMax={yMax}
+        gridStep={gridStep}
+        formatValue={formatValue}
+        readoutDotRef={dotRef}
+        readoutValueRef={valueRef}
+      />
+    </div>
   );
 }
 

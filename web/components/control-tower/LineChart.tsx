@@ -24,8 +24,15 @@
  *   the global `prefers-reduced-motion` guard neutralizes it
  *   to the steady state.
  *
- * Pure Server-Component-safe rendering: no hooks, no state.
+/*
+ * Pure rendering at the SVG level; the hover readout is a
+ * ref-driven presentation layer owned by the client island.
+ * No hooks, no state, no analytics arithmetic.
  */
+
+import {
+  type RefObject,
+} from "react";
 
 export interface LineChartPoint {
   /** X-axis label, verbatim from the API (e.g. "2026-01"). */
@@ -50,6 +57,11 @@ interface LineChartProps {
   gridStep?: number;
   /** Optional custom value formatter (default appends the unit). */
   formatValue?: (value: number) => string;
+  /** P12.2 readout targets: refs the client island moves onto
+   *  the nearest real observation on hover. Optional — when
+   *  absent the chart renders without the readout elements. */
+  readoutDotRef?: RefObject<SVGCircleElement | null>;
+  readoutValueRef?: RefObject<SVGTextElement | null>;
 }
 
 // Fixed viewBox geometry; the SVG scales fluidly to its parent.
@@ -69,6 +81,8 @@ export function LineChart({
   yMax = 100,
   gridStep = 25,
   formatValue,
+  readoutDotRef,
+  readoutValueRef,
 }: LineChartProps) {
   const format = formatValue ?? ((value: number) => `${value}${unit}`);
   if (points.length === 0) return null;
@@ -89,6 +103,10 @@ export function LineChart({
   for (let g = 0; g <= yMax + 1e-9; g += gridStep) {
     gridValues.push(g);
   }
+  // P12.2: the baseline (0) renders solid so the axis reads as
+  // an axis; upper gridlines are dotted and recede.
+  const gridClass = (g: number) =>
+    g === 0 ? "chart-grid grid-base" : "chart-grid";
 
   // Thin x labels on dense series; never drop the last label.
   const labelEvery =
@@ -118,7 +136,7 @@ export function LineChart({
         {gridValues.map((g) => (
           <g key={g}>
             <line
-              className="chart-grid"
+              className={gridClass(g)}
               x1={PAD.left}
               x2={W - PAD.right}
               y1={yAt(g)}
@@ -170,6 +188,32 @@ export function LineChart({
             </text>
           ),
         )}
+
+        {/* P12.2 hover/focus readout: presentation only — the
+            client island moves these two elements onto the
+            nearest real observation. The position mirrors the
+            API's own values; no data is created, interpolated,
+            or altered. Keyboard users get the same values from
+            the visually-hidden table below, which stays
+            authoritative. Reduced motion snaps (no transition)
+            via the global guard. */}
+        {readoutDotRef && readoutValueRef ? (
+          <>
+            <circle
+              ref={readoutDotRef}
+              className="chart-readout-dot"
+              r={4.5}
+              cx={0}
+              cy={0}
+            />
+            <text
+              ref={readoutValueRef}
+              className="chart-readout-value"
+              x={0}
+              y={0}
+            />
+          </>
+        ) : null}
       </svg>
 
       {/* Visually-hidden data-table fallback: the exact API

@@ -63,6 +63,28 @@
   --text-page: 1.5rem;     /* 24px  — page titles                 */
   --text-metric: 1.625rem; /* 26px  — control-tower metrics       */
 
+  /* P12.2 command shell (dark): the shell carries Adensa's
+     identity — deep navy-charcoal chrome framing light content
+     surfaces. On-dark values are contrast-matched to their
+     actual surfaces:
+       --shell-text        #f2f6fa  (~15:1 on --shell-bg)
+       --shell-muted       #9fb3c8  (~7.5:1 on both darks)
+       --accent-on-dark    #85b8e8  (~7.5:1 on both darks)
+       --critical-on-dark  #f97066  (~5.7:1 on --shell-tile)  */
+  --shell-bg: #0b1f33;
+  --shell-tile: #0e2740;
+  --shell-border: #1e3a52;
+  --shell-text: #f2f6fa;
+  --shell-muted: #9fb3c8;
+  --accent-on-dark: #85b8e8;
+  --critical-on-dark: #f97066;
+
+  /* P12.2 deck typography: the command title steps up on
+     desktop via clamp (28→30px); metrics read 26→34px where
+     space allows. */
+  --text-deck: clamp(1.75rem, 1.4rem + 1.2vw, 1.875rem);
+  --text-command: clamp(1.625rem, 1.3rem + 1.4vw, 2.125rem);
+
   /* Spacing scale */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -194,8 +216,11 @@ textarea:focus-visible,
   justify-content: space-between;
   gap: var(--space-6);
   padding: 14px 32px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  /* P12.2 command shell: deep navy chrome framing light
+     content; a barely-perceptible tonal step (not decoration)
+     gives the bar a hint of elevation above the page. */
+  background: linear-gradient(180deg, #0d2338 0%, var(--shell-bg) 100%);
+  border-bottom: 1px solid var(--shell-border);
 }
 
 .app-brand {
@@ -207,11 +232,12 @@ textarea:focus-visible,
   font-size: 1.0625rem;
   font-weight: 700;
   letter-spacing: 0.2px;
+  color: var(--shell-text);
 }
 
 .app-brand-sub {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--shell-muted);
 }
 
 /* The primary navigation is the <ul class="app-nav"> itself
@@ -231,24 +257,34 @@ textarea:focus-visible,
   padding: 8px 14px;
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
-  color: var(--text-muted);
+  color: var(--shell-muted);
   transition: background-color 150ms ease, color 150ms ease;
 }
 
 .app-nav a:hover {
-  background: var(--neutral-chip);
-  color: var(--text);
+  background: rgba(133, 184, 232, 0.12);
+  color: var(--shell-text);
 }
 
 .app-nav a:active {
-  background: var(--surface-sunken);
-  color: var(--text);
+  background: rgba(133, 184, 232, 0.2);
+  color: var(--shell-text);
 }
 
 .app-nav a[aria-current="page"] {
-  background: var(--accent-tint);
-  color: var(--accent);
+  background: rgba(133, 184, 232, 0.16);
+  color: var(--accent-on-dark);
   font-weight: 600;
+}
+
+/* Keyboard focus inside the dark shell: the global focus ring
+   pairs a white halo with the accent; on dark chrome the halo
+   must be dark to stay visible, and the ring itself uses the
+   brighter on-dark accent. */
+.app-nav a:focus-visible,
+.skip-link:focus-visible {
+  box-shadow: 0 0 0 2px var(--shell-bg), 0 0 0 4px var(--accent-on-dark);
+  border-radius: var(--radius-sm);
 }
 
 .app-main {
@@ -261,10 +297,152 @@ textarea:focus-visible,
 
 .app-footer {
   padding: 14px 32px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-muted);
+  background: var(--shell-bg);
+  border-top: 1px solid var(--shell-border);
+  color: var(--shell-muted);
   font-size: var(--text-sm);
+}
+
+.page-title {
+  font-size: var(--text-page);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.page-intro {
+  color: var(--text-muted);
+  font-size: 0.84375rem; /* 13.5px */
+  margin-bottom: 24px;
+  max-width: 72ch;
+}
+
+/* ==================================================
+   COMMAND DECK (P12.2) — Control Tower opening band
+   ==================================================
+   The page's identity moment: a dark operational band
+   carrying the command title, the truthful operational
+   context line, and the KPI tiles. The band belongs to
+   the Control Tower only; every other page keeps the
+   light .page-title/.page-intro treatment. */
+
+.command-deck {
+  background: linear-gradient(180deg, #0d2338 0%, var(--shell-bg) 100%);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius);
+  padding: 22px 24px 24px;
+  margin-bottom: 20px;
+}
+
+.command-deck-title {
+  font-size: var(--text-deck);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--shell-text);
+  margin: 0 0 4px;
+}
+
+.command-deck-context {
+  color: var(--shell-muted);
+  font-size: 0.84375rem;
+  max-width: 76ch;
+  margin: 0 0 18px;
+}
+
+.command-deck-context strong {
+  color: var(--accent-on-dark);
+  font-weight: 600;
+}
+
+/* Full-bleed variant: the deck visually extends to the shell
+   chrome on the Control Tower. Kept simple — the content column
+   max-width still governs; only the background extends. */
+.deck-bleed {
+  margin: -28px -32px 20px;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  padding: 28px max(32px, calc((100% - 1180px) / 2 + 32px)) 24px;
+}
+
+/* KPI tiles: dark command-deck surfaces, light-on-dark text,
+   accent rail identity retained from P8.9. Numerals step up
+   to 26→34px (clamp) with tabular figures. */
+.deck-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.deck-metric {
+  display: block;
+  text-decoration: none;
+  background: var(--shell-tile);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius);
+  box-shadow: inset 0 2px 0 var(--accent-on-dark);
+  padding: 14px 16px 12px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.deck-metric:hover {
+  border-color: rgba(133, 184, 232, 0.55);
+  box-shadow: inset 0 2px 0 var(--shell-text), 0 0 0 1px rgba(133, 184, 232, 0.35);
+}
+
+.deck-metric:focus-visible {
+  outline: 2px solid var(--accent-on-dark);
+  outline-offset: 2px;
+}
+
+.deck-metric-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--shell-muted);
+  margin-bottom: 4px;
+}
+
+.deck-metric:hover .deck-metric-label {
+  color: var(--accent-on-dark);
+}
+
+.deck-metric-value {
+  display: block;
+  font-size: var(--text-command);
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--shell-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one KPI where the value itself is the urgency —
+   Critical Open keeps its semantic colour, in the on-dark
+   variant (AA on --shell-tile). The label still names the
+   metric; colour is never the sole carrier. */
+.deck-metric-value-critical {
+  color: var(--critical-on-dark);
+}
+
+.deck-metric-note {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--shell-muted);
+  margin-top: 3px;
+}
+
+@media (max-width: 640px) {
+  .command-deck,
+  .deck-bleed {
+    padding: 18px 16px 18px;
+  }
+
+  .deck-metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+  }
 }
 
 /* ==================================================
@@ -588,6 +766,13 @@ textarea:focus-visible,
       var(--border) 75%
     );
     background-size: 100% 100%;
+  }
+
+  /* P12.2: the chart readout is not an animation, but its
+     hover/focus appearance snaps rather than fades. */
+  .chart-readout-dot,
+  .chart-readout-value {
+    transition: none;
   }
 }
 
@@ -1253,10 +1438,23 @@ textarea:focus-visible,
    visible/aria text. The one-shot reveal is transform/opacity
    only and is neutralized by the P8.1 reduced-motion guard. */
 
+/* P12.2: the composition band reads as operational context —
+   “what the operation currently contains” — rendered as a
+   contained strip with slightly taller segments and stronger
+   count typography, visually bridging the KPI band above and
+   the analytical canvas below. */
 .composition-band {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+
+.band-track {
+  height: 12px;
 }
 
 .band-row {
@@ -1288,7 +1486,6 @@ textarea:focus-visible,
 .band-track {
   display: flex;
   width: 100%;
-  height: 10px;
   border-radius: 999px;
   overflow: hidden;
   background: var(--surface-sunken);
@@ -1316,6 +1513,38 @@ textarea:focus-visible,
 
 .band-segment-critical {
   background: var(--critical);
+}
+
+/* P12.2 line-chart hover readout: the client island updates
+   these two elements only (a circle moved onto the nearest
+   observation and a text value). Hidden until hover/focus;
+   keyboard users reach the same data through the visually
+   hidden table fallback, which remains authoritative. */
+.chart-readout-dot {
+  fill: var(--series-rate);
+  stroke: var(--surface);
+  stroke-width: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chart-readout-value {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  text-anchor: middle;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chart-figure:hover .chart-readout-dot,
+.chart-figure:hover .chart-readout-value,
+.chart-figure:focus-within .chart-readout-dot,
+.chart-figure:focus-within .chart-readout-value {
+  opacity: 1;
 }
 
 @keyframes band-reveal {
@@ -1395,6 +1624,13 @@ textarea:focus-visible,
   .app-footer {
     padding: 12px 24px;
   }
+
+  /* Full-bleed deck at the mid tier: match the mid padding. */
+  .deck-bleed {
+    margin: -24px -24px 18px;
+    padding-left: max(24px, calc((100% - 1180px) / 2 + 24px));
+    padding-right: max(24px, calc((100% - 1180px) / 2 + 24px));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1440,6 +1676,12 @@ textarea:focus-visible,
     gap: 16px;
   }
 
+  /* The full-bleed deck: negative margins match the tighter
+     main padding; inner padding resets to the compact tier. */
+  .deck-bleed {
+    margin: -20px -16px 16px;
+  }
+
   /* The wrapped section index is taller when the chips stack;
      anchors must clear the increased sticky height. */
   #state,
@@ -1467,9 +1709,10 @@ textarea:focus-visible,
   gap: 16px;
 }
 
-/* P8.9: analytical panels carry their own identity — a tinted
-   header strip (edge to edge, clipped by the panel radius),
-   an elevated surface, and the accent-strong focused border.
+/* P8.9 + P12.2: analytical panels carry their own identity —
+   a dark command-strip header (edge to edge, clipped by the
+   panel radius) whose *basis wording* is presented as
+   purposeful analytical context rather than fine-print meta.
    Muted-panel opacity behaviour from P8.7.3 is unchanged. */
 .analytics-panel {
   border: 1px solid var(--border);
@@ -1483,16 +1726,23 @@ textarea:focus-visible,
 
 .analytics-panel-header {
   margin: 0;
-  padding: 12px 16px;
-  background: var(--accent-tint);
-  border-bottom: 1px solid var(--border);
+  padding: 12px 16px 13px;
+  background: linear-gradient(180deg, #0d2338 0%, var(--shell-bg) 100%);
+  border-bottom: 1px solid var(--shell-border);
 }
 
 .analytics-panel-header h3 {
-  margin: 0;
+  margin: 0 0 2px;
   font-size: 1rem;
-  font-weight: 600;
-  color: var(--accent-dark);
+  font-weight: 650;
+  color: var(--shell-text);
+}
+
+.analytics-panel-header .analytics-basis {
+  margin: 0;
+  color: var(--shell-muted);
+  font-size: 0.78125rem;
+  letter-spacing: 0.01em;
 }
 
 /* Body content inherits the padding the panel used to own. */
@@ -1514,6 +1764,32 @@ textarea:focus-visible,
   color: var(--text-secondary);
   font-size: 0.8125rem;
 }
+
+/* P12.2: the analytical canvas is the Control Tower's visual
+   centre — slightly elevated cards, refined grid treatment,
+   and a hover readout dot on the line chart. */
+.analytics-grid {
+  gap: 18px;
+}
+
+.analytics-panel.is-focused {
+  border-color: var(--accent-strong);
+  box-shadow: var(--shadow-2);
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+/* The baseline gridline (0) stays solid so the axis reads as
+   an axis; upper gridlines are dotted and recede. */
+.chart-grid.grid-base {
+  stroke-dasharray: none;
+  stroke: var(--border-strong);
+}
+
 
 .analytics-context {
   margin: 0 0 8px;

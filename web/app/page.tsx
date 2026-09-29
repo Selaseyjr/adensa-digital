@@ -11,7 +11,7 @@
  * fetched on the server.
  */
 
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 import { getAnalyticsOverview, getControlTowerSummary } from "@/lib/api/client";
 import {
   EmptyPanel,
@@ -25,8 +25,24 @@ import { FollowUpTable } from "@/components/control-tower/FollowUpTable";
 import { RecentlyResolvedTable } from "@/components/control-tower/RecentlyResolvedTable";
 import { AnalyticsSection } from "@/components/control-tower/AnalyticsSection";
 
-async function ControlTower() {
-  const result = await getControlTowerSummary();
+// P12.2: the deck (title + context + KPI tiles) and the light
+// operational sections below it are separate Suspense units,
+// but they consume the SAME snapshot — cache() dedupes the
+// fetch within the request so the summary is fetched once.
+const getSummary = cache(getControlTowerSummary);
+
+/** The deck's KPI band. Non-data states render nothing here —
+ * the operational sections below carry the honest state panel. */
+async function DeckMetrics() {
+  const result = await getSummary();
+  if (result.kind !== "data") {
+    return null;
+  }
+  return <ControlTowerMetrics summary={result.data} />;
+}
+
+async function OperationalSections() {
+  const result = await getSummary();
 
   switch (result.kind) {
     case "unavailable":
@@ -40,7 +56,6 @@ async function ControlTower() {
     case "data":
       return (
         <>
-          <ControlTowerMetrics summary={result.data} />
           <section className="section" aria-labelledby="composition-title">
             <h2 id="composition-title" className="section-title">
               Queue Composition
@@ -114,14 +129,19 @@ async function AnalyticsOverviewSection() {
 export default function ControlTowerPage() {
   return (
     <>
-      <h1 className="page-title">Control Tower</h1>
-      <p className="page-intro">
-        The at-a-glance operational position: open exceptions, decisions
-        awaiting planners, recoveries awaiting execution, and work requiring
-        follow-up. Executed does not necessarily mean resolved.
-      </p>
+      <div className="command-deck deck-bleed">
+        <h1 className="command-deck-title">Control Tower</h1>
+        <p className="command-deck-context">
+          The at-a-glance operational position: open exceptions, decisions
+          awaiting planners, recoveries awaiting execution, and work requiring
+          follow-up. <strong>Executed does not necessarily mean resolved.</strong>
+        </p>
+        <Suspense fallback={null}>
+          <DeckMetrics />
+        </Suspense>
+      </div>
       <Suspense fallback={<LoadingPanel label="control tower" />}>
-        <ControlTower />
+        <OperationalSections />
       </Suspense>
     </>
   );
