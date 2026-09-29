@@ -1,0 +1,22 @@
+# Keep the frontend image production-oriented: no local
+# tooling state, no test artifacts, no environment files.
+# The committed web/.env.example documents variable NAMES and
+# formats only — it contains no credentials and is safe to
+# exclude from the image anyway.
+
+node_modules
+.next
+.git
+.env
+.env.local
+.env*.local
+.env.example
+npm-debug.log*
+coverage
+tests
+tsconfig.tsbuildinfo
+eslint.config.mjs
+vitest.config.ts
+README.md
+Dockerfile
+.dockerignore
