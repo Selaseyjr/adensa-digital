@@ -10,8 +10,8 @@
 # via the environment (docs/deployment.md). Startup
 # verification (lifespan) fails fast unless the database is
 # reachable and the schema is current; migrations are applied
-# by the release command (`python -m app.database`), never by
-# the API process itself (ADR-012).
+# by the Cloud Run migration Job (`python -m app.database`),
+# never by the API process itself (ADR-012).
 
 FROM python:3.14-slim
 
@@ -34,6 +34,7 @@ COPY app/ ./app/
 EXPOSE 8000
 
 # Bind the platform-provided $PORT (8000 when unset, e.g.
-# locally). Migrations run in the release command before this
-# process starts — the API verifies and never migrates.
+# locally). Migrations run in the Cloud Run migration Job
+# before this process starts — the API verifies and never
+# migrates.
 CMD ["sh", "-c", "uvicorn app.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

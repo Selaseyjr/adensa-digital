@@ -14,9 +14,8 @@ development.
 > **Google Cloud Run** — a frontend `web/Dockerfile` joins the
 > backend `Dockerfile` (P10.2), and migrations run as an
 > explicit Cloud Run Job instead of a platform release hook.
-> The Fly.io configuration is **temporary/legacy** during the
-> migration and will be removed only after the Google Cloud
-> deployment is proven (see "Fly.io migration note" below).
+> The Fly.io configuration was retired (P11.3) after the
+> Google Cloud deployment was verified in production.
 
 ## Architecture
 
@@ -209,8 +208,8 @@ renders every page server-side through API calls, so a
 scale-to-zero API turns the first user request into a double
 cold start (instance start + startup verification). One always
 warm instance keeps the operational surface responsive and
-predictable — the same demo-stability decision the Fly
-configuration encoded (`min_machines_running = 1`). The API is
+predictable — the same demo-stability decision the previous
+Fly configuration encoded (`min_machines_running = 1`). The API is
 stateless (per-request connections), so additional instances
 scale safely if traffic demands.
 
@@ -282,14 +281,6 @@ strip it (P11.1) is superseded by this evidence. The Cloud
 Build service account also holds the builder role but is not
 the configured executor; Cloud Build service-agent roles are
 standard and untouched.
-
-## Fly.io migration note
-
-The `fly.toml` and the original P10.2 Fly/Vercel topology are
-**temporary/legacy deployment configuration** retained during
-the migration. They will be removed only after the Google Cloud
-deployment is proven end-to-end; until then they must not be
-treated as the production path.
 
 ## API-key security limitation
 
