@@ -141,13 +141,54 @@ npm run dev        # http://localhost:3000
 
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint (next/core-web-vitals + next/typescript)
-npm run test       # vitest (54 tests, msw-mocked /v1 boundary)
+npm run test       # vitest (223 tests, msw-mocked /v1 boundary)
 npm run build      # production build
 ```
 
 The Python FastAPI server must be running locally for the pages to
 render live data; with the API down, surfaces render their deliberate
 "API unavailable" states.
+
+## Browser end-to-end coverage (P12.4)
+
+Playwright drives the real Next.js production build against the real
+FastAPI backend over a **disposable SQLite database** — no mocks, no
+application changes.
+
+```bash
+# from web/
+npm run e2e          # runs against the disposable full stack
+npm run e2e:report   # opens the HTML report after a run
+```
+
+Isolation contract:
+
+- **Disposable database.** `e2e/global-setup.ts` rebuilds
+  `e2e/.e2e-adensa.db` on every run through the project's canonical
+  `app.bootstrap.initialize_adensa` initializer, selected via the
+  documented `DATABASE_URL=sqlite:///` seam. The canonical development
+  database (`data/adensa.db`) is never touched, and Neon/production is
+  unreachable by construction (no `DATABASE_URL` is inherited).
+- **No credentials anywhere.** The API runs in its local
+  no-credential mode (`ADENSA_API_KEY` unset) and the Next client
+  receives no `API_KEY`, so no secret exists to leak into browser
+  code — the API origin and any credential remain server-side by the
+  existing architecture.
+- **Production build.** The suite starts `next start` against
+  `.next` (`npm run build` first), the same artifact CI builds and
+  deployments run.
+- **Off-default ports** (3013 web / 8013 API) so a developer's
+  running stack is never collided with.
+
+The five flows prove: the Control Tower loads real data; the inbox
+filter changes the URL and displays bounded results; the investigation
+workspace loads a real exception with its sections; one operational
+mutation (approve → execute) succeeds end-to-end; and the stale/409
+mutation path renders the backend engine's guard verbatim while the
+workspace keeps working.
+
+Requirements: Python venv at the repository root (`.venv`) and
+`npx playwright install chromium` once per machine.
 
 ## CI
 

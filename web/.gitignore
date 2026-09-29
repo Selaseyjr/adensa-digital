@@ -13,6 +13,13 @@
 # testing
 /coverage
 
+# playwright end-to-end (P12.4)
+/test-results
+/playwright-report
+/blob-report
+/e2e/.e2e-adensa.db*
+/playwright/.cache
+
 # next.js
 /.next/
 /out/
