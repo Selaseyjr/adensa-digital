@@ -13,7 +13,7 @@ import { defineConfig, devices } from "@playwright/test";
  * Isolation contract:
  * - The FastAPI server under test runs against a disposable
  *   SQLite database (web/e2e/.e2e-adensa.db, git-ignored),
- *   created fresh by web/e2e/global-setup.ts via the project's
+ *   created fresh by web/e2e/e2e_api_server.py via the project's
  *   canonical bootstrap and selected through the documented
  *   `DATABASE_URL=sqlite:///` seam (P5.2). The canonical
  *   development database (data/adensa.db) is never touched.

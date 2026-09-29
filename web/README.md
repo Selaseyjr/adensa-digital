@@ -163,7 +163,7 @@ npm run e2e:report   # opens the HTML report after a run
 
 Isolation contract:
 
-- **Disposable database.** `e2e/global-setup.ts` rebuilds
+- **Disposable database.** `e2e/e2e_api_server.py` rebuilds
   `e2e/.e2e-adensa.db` on every run through the project's canonical
   `app.bootstrap.initialize_adensa` initializer, selected via the
   documented `DATABASE_URL=sqlite:///` seam. The canonical development
