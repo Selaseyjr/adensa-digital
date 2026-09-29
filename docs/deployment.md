@@ -270,6 +270,19 @@ overrides the container command). Neither image contains
 secrets, credentials, or operational data — packaging is
 configuration-shape only.
 
+**Build executor identity (P11.2c).** This project's Cloud
+Build default executor is the default Compute Engine service
+account (`533810602636-compute@developer.gserviceaccount.com`),
+confirmed by build history: the production `adensa/api` and
+`adensa/web` images were built under that identity. Its
+`roles/cloudbuild.builds.builder` grant is therefore
+load-bearing for the manual `gcloud builds submit` workflow and
+must **not** be removed — an earlier audit recommendation to
+strip it (P11.1) is superseded by this evidence. The Cloud
+Build service account also holds the builder role but is not
+the configured executor; Cloud Build service-agent roles are
+standard and untouched.
+
 ## Fly.io migration note
 
 The `fly.toml` and the original P10.2 Fly/Vercel topology are
