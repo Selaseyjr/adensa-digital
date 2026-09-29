@@ -11,6 +11,7 @@ from app.generate_data import (
     generate_shipment_events,
 )
 from app.detect_exceptions import detect_exceptions
+from app.generate_lifecycle_demo import generate_lifecycle_demo
 from app.generate_recovery_options import generate_recovery_options
 from app.workflow_engine import generate_workflow_actions
 
@@ -188,6 +189,14 @@ def initialize_adensa():
 
         logger.info("\n10. Generating workflow actions...")
         generate_workflow_actions(connection)
+
+        # P12.6: progress the deterministic historical cohort
+        # through the real approval/execution engines so the
+        # demo dataset shows the complete lifecycle. Idempotent
+        # and a no-op on any database that already carries
+        # lifecycle evidence (real or seeded).
+        logger.info("\n11. Seeding lifecycle demo history...")
+        generate_lifecycle_demo(connection)
 
         logger.info("\n" + "=" * 60)
         logger.info("ADENSA DIGITAL INITIALIZATION COMPLETE")

@@ -129,6 +129,48 @@ def test_full_bootstrap_populates_fresh_database(
         assert counts["recovery_options"] > 0
         assert counts["recovery_actions"] > 0
 
+        # P12.6: the fresh-checkout dataset carries lifecycle
+        # history beyond the generation pipeline — approvals,
+        # executions, resolutions and manual interventions all
+        # exist, and the E2E fixtures remain pending decisions.
+        statuses = dict(
+            connection.execute(
+                "SELECT status, COUNT(*) FROM recovery_actions "
+                "GROUP BY status"
+            ).fetchall()
+        )
+
+        assert statuses.get("Executed", 0) > 0
+        assert statuses.get("Approved", 0) > 0
+        assert statuses.get("Pending Approval", 0) > 0
+
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM exceptions "
+                "WHERE resolution_status = 'Resolved'"
+            ).fetchone()[0]
+            > 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM manual_interventions"
+            ).fetchone()[0]
+            > 0
+        )
+
+        for exception_id in ("EXC-000008", "EXC-000009"):
+
+            fixture_status = connection.execute(
+                """
+                SELECT resolution_status
+                FROM exceptions
+                WHERE exception_id = ?
+                """,
+                (exception_id,),
+            ).fetchone()[0]
+
+            assert fixture_status == "Open"
+
         # Detection must have run and populated the exception
         # pipeline that everything downstream consumes.
         assert database_contains_operational_data() is True
