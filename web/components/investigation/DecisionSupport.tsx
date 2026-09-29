@@ -8,6 +8,15 @@
  * verbatim; nothing is recalculated, re-ranked or rescored
  * in the client (W4/W6 discipline carried into the web
  * client).
+ *
+ * P12.5 (reasoning chain): the recommendation's reasoning —
+ * confidence basis and trade-offs — is promoted out of the
+ * disclosure so the basic "why" reads at a glance; the
+ * detailed factor table remains a native disclosure. Options
+ * the engine evaluated without recommending are disclosed
+ * under "Also evaluated" whenever the contract supplies them.
+ * Still no recomputation: every rendered sentence is a
+ * contract field verbatim.
  */
 
 import type {
@@ -58,6 +67,39 @@ function RecommendedOptionCard({ option }: { option: ScoredOption }) {
   );
 }
 
+/**
+ * P12.5: the at-a-glance reasoning for the recommendation —
+ * the rationale's confidence basis and trade-off sentences,
+ * promoted out of the disclosure. Every line is a verbatim
+ * contract field; nothing is summarized, reinterpreted or
+ * invented here.
+ */
+function RecommendationWhy({
+  rationale,
+}: {
+  rationale: NonNullable<RecoveryAssessment["rationale"]>;
+}) {
+  return (
+    <div className="recommendation-why">
+      <h4 className="subsection-title">Why this recommendation</h4>
+      <p className="recommendation-why-basis">{rationale.confidence_basis}</p>
+      {rationale.trade_offs.length > 0 ? (
+        <ul className="trade-off-list">
+          {rationale.trade_offs.map((tradeOff) => (
+            <li key={tradeOff.option_id}>
+              <strong>
+                {tradeOff.option_id} ({tradeOff.transport_mode})
+              </strong>{" "}
+              is stronger on{" "}
+              {tradeOff.stronger_factors.map(formatFactorKey).join(", ")}.
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function AlternativeRow({ option }: { option: ScoredOption }) {
   return (
     <tr>
@@ -104,14 +146,22 @@ function EvaluatedOptionsTable({ options }: { options: EvaluatedOption[] }) {
   );
 }
 
-function RationaleBlock({
+/**
+ * P12.5: the detailed factor table keeps its native
+ * disclosure — the at-a-glance reasoning above carries the
+ * confidence basis and trade-offs, this carries the weights
+ * and per-factor contributions.
+ */
+function FactorBreakdownDisclosure({
   rationale,
 }: {
   rationale: NonNullable<RecoveryAssessment["rationale"]>;
 }) {
   return (
     <details className="rationale subsection-details">
-      <summary className="subsection-summary">Why this recommendation</summary>
+      <summary className="subsection-summary">
+        Factor breakdown &amp; weights
+      </summary>
 
       <div className="table-wrap">
         <table className="data-table">
@@ -146,24 +196,6 @@ function RationaleBlock({
         Each cell: factor score (weighted contribution to the decision score).
         Weights are policy configuration — unchanged by this view.
       </p>
-
-      {rationale.trade_offs.length > 0 ? (
-        <ul className="trade-off-list">
-          {rationale.trade_offs.map((tradeOff) => (
-            <li key={tradeOff.option_id}>
-              <strong>
-                {tradeOff.option_id} ({tradeOff.transport_mode})
-              </strong>{" "}
-              is stronger on{" "}
-              {tradeOff.stronger_factors.map(formatFactorKey).join(", ")}.
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <p className="confidence-basis">
-        <strong>Confidence basis:</strong> {rationale.confidence_basis}
-      </p>
     </details>
   );
 }
@@ -174,12 +206,19 @@ export function DecisionSupport({
   assessment: RecoveryAssessment;
 }) {
   return (
-    <section className="section" aria-label="Decision support">
+    <section
+      className="section section--options"
+      aria-label="Decision support"
+    >
       <h3 className="section-title">Decision Support</h3>
 
       {assessment.recommendation !== null ? (
         <>
           <RecommendedOptionCard option={assessment.recommendation} />
+
+          {assessment.rationale !== null ? (
+            <RecommendationWhy rationale={assessment.rationale} />
+          ) : null}
 
           {assessment.alternatives.length > 0 ? (
             <div className="table-wrap">
@@ -208,7 +247,26 @@ export function DecisionSupport({
           )}
 
           {assessment.rationale !== null ? (
-            <RationaleBlock rationale={assessment.rationale} />
+            <FactorBreakdownDisclosure rationale={assessment.rationale} />
+          ) : null}
+
+          {/* P12.5: options the engine evaluated without
+              recommending, whenever the contract supplies them.
+              The neutral label stays truthful under every
+              contract shape; the table's own Feasible/Infeasible
+              column carries each verdict. */}
+          {assessment.evaluated_options.length > 0 ? (
+            <details className="subsection-details">
+              <summary className="subsection-summary">
+                Also evaluated — not recommended (
+                {assessment.evaluated_options.length}{" "}
+                {assessment.evaluated_options.length === 1
+                  ? "option"
+                  : "options"}
+                )
+              </summary>
+              <EvaluatedOptionsTable options={assessment.evaluated_options} />
+            </details>
           ) : null}
         </>
       ) : (

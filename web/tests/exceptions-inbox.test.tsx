@@ -103,7 +103,6 @@ describe("exception work queue table", () => {
     expect(link).toHaveAttribute("aria-current", "true");
   });
 });
-;
 
 describe("selected exception panel", () => {
   it("presents the situation fields the inbox contract supplies", () => {
@@ -144,5 +143,128 @@ describe("inbox architectural rule — no client-side business rules", () => {
     );
 
     expect(screen.getByText("Actionable")).toBeInTheDocument();
+  });
+});
+
+// ==================================================
+// P12.5 — SEVERITY RAILS / SCANABILITY
+// ==================================================
+// Presentation-only: data-severity carries a display tone
+// derived from the row's severity; rails, washes and dots
+// are decoration. The severity text/chip remains the
+// semantic source; unknown severities must fall back to
+// neutral.
+
+describe("inbox severity presentation (P12.5)", () => {
+  it("carries a data-severity tone on every row for all four severities", () => {
+    render(
+      <ExceptionInboxTable
+        rows={[
+          makeInboxRow({ exception_id: "EXC-C", severity: "Critical" }),
+          makeInboxRow({ exception_id: "EXC-H", severity: "High" }),
+          makeInboxRow({ exception_id: "EXC-M", severity: "Medium" }),
+          makeInboxRow({ exception_id: "EXC-L", severity: "Low" }),
+        ]}
+        selectedExceptionId={null}
+      />,
+    );
+
+    const rows = screen.getAllByRole("row");
+
+    expect(rows[1]).toHaveAttribute("data-severity", "critical");
+    expect(rows[2]).toHaveAttribute("data-severity", "high");
+    expect(rows[3]).toHaveAttribute("data-severity", "medium");
+    expect(rows[4]).toHaveAttribute("data-severity", "low");
+  });
+
+  it("falls back to the neutral tone for an unknown severity", () => {
+    render(
+      <ExceptionInboxTable
+        rows={[makeInboxRow({ severity: "Cosmic" })]}
+        selectedExceptionId={null}
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1];
+
+    expect(row).toHaveAttribute("data-severity", "neutral");
+    expect(screen.getByText("Cosmic")).toBeInTheDocument();
+  });
+
+  it("renders visible dots for every known severity including Medium and Low", () => {
+    render(
+      <ExceptionInboxTable
+        rows={[
+          makeInboxRow({ exception_id: "EXC-C", severity: "Critical" }),
+          makeInboxRow({ exception_id: "EXC-H", severity: "High" }),
+          makeInboxRow({ exception_id: "EXC-M", severity: "Medium" }),
+          makeInboxRow({ exception_id: "EXC-L", severity: "Low" }),
+        ]}
+        selectedExceptionId={null}
+      />,
+    );
+
+    const dots = document.querySelectorAll(".severity-dot");
+
+    expect(dots).toHaveLength(4);
+    expect(
+      document.querySelector(".severity-dot-critical"),
+    ).not.toBeNull();
+    expect(document.querySelector(".severity-dot-high")).not.toBeNull();
+    expect(document.querySelector(".severity-dot-medium")).not.toBeNull();
+    expect(document.querySelector(".severity-dot-low")).not.toBeNull();
+    // Every dot is decorative: the chip text is the semantic carrier.
+    for (const dot of dots) {
+      expect(dot).toHaveAttribute("aria-hidden", "true");
+    }
+  });
+
+  it("keeps the selected row authoritative — the accent rail wins", () => {
+    render(
+      <ExceptionInboxTable
+        rows={[makeInboxRow({ severity: "Critical" })]}
+        selectedExceptionId="EXC-001529"
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1];
+
+    // The row carries both the selection class and the severity
+    // tone; CSS resolves the rail in favour of selection. The
+    // class contract is pinned here so a styling regression
+    // (double rail) cannot ship silently.
+    expect(row).toHaveClass("queue-row-selected");
+    expect(row).toHaveAttribute("data-severity", "critical");
+  });
+
+  it("echoes the severity tone on the selected-exception panel", () => {
+    render(
+      <SelectedExceptionPanel
+        exception={makeInboxRow({ severity: "Critical" })}
+      />,
+    );
+
+    const panel = screen.getByLabelText("Selected exception");
+
+    expect(panel).toHaveAttribute("data-severity", "critical");
+  });
+
+  it("preserves the backend row order with severity attributes present", () => {
+    render(
+      <ExceptionInboxTable
+        rows={[
+          makeInboxRow({ exception_id: "EXC-Z", severity: "Low" }),
+          makeInboxRow({ exception_id: "EXC-A", severity: "Critical" }),
+        ]}
+        selectedExceptionId={null}
+      />,
+    );
+
+    const rows = screen.getAllByRole("row");
+
+    expect(rows[1].textContent).toContain("EXC-Z");
+    expect(rows[2].textContent).toContain("EXC-A");
+    expect(rows[1]).toHaveAttribute("data-severity", "low");
+    expect(rows[2]).toHaveAttribute("data-severity", "critical");
   });
 });

@@ -4,14 +4,23 @@
  * investigation workflow (assessment, history, workflow
  * actions) arrives in later checkpoints against its own
  * /v1 endpoints.
+ *
+ * P12.5: the panel carries the same presentation-only
+ * `data-severity` tone as its inbox row, so its severity rail
+ * echoes the queue. Selection itself never uses a left rail
+ * here — there is no competing rail to confuse with severity.
  */
 
 import type { InboxRow } from "@/lib/types/api";
-import { SeverityChip } from "@/components/SeverityChip";
+import { SeverityChip, severityToneOf } from "@/components/SeverityChip";
 
 export function SelectedExceptionPanel({ exception }: { exception: InboxRow }) {
   return (
-    <section className="section" aria-label="Selected exception">
+    <section
+      className="section"
+      aria-label="Selected exception"
+      data-severity={severityToneOf(exception.severity)}
+    >
       <h2 className="section-title">
         {exception.exception_id} — {exception.exception_type}
       </h2>

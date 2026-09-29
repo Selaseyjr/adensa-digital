@@ -15,6 +15,10 @@
  * is UX only: if a stale view attempts an invalid action,
  * the engine's 409 message is rendered verbatim rather than
  * re-interpreted or bypassed.
+ *
+ * P12.5: the existing state/reason presentation is wrapped in
+ * a labelled outcome block for scanability — no new state,
+ * no new wording, no gating change.
  */
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
@@ -200,15 +204,26 @@ export function WorkflowAction({
   const busy = approvePending || rejectPending || manualPending || isExecutePending;
 
   return (
-    <section className="section" aria-label="Workflow action">
+    <section
+      className="section section--decision"
+      aria-label="Workflow action"
+    >
       <h3 className="section-title">Workflow Action</h3>
 
       {state !== null ? (
         <>
-          <p className="workflow-state-line">
-            Current state: <StateChip state={state.state} />
-          </p>
-          <p className="section-caption">{state.reason}</p>
+          {/* P12.5: the case's current outcome, visually consolidated
+              — state chip and the classifier's own reason in one
+              labelled block so "where the case stands now" reads at
+              a glance. Presentation only; the state vocabulary is
+              the backend classifier's, unchanged. */}
+          <div className="outcome-block">
+            <span className="outcome-block-title">Current outcome</span>
+            <p className="workflow-state-line">
+              Current state: <StateChip state={state.state} />
+            </p>
+            <p className="section-caption">{state.reason}</p>
+          </div>
         </>
       ) : (
         <p className="section-caption">

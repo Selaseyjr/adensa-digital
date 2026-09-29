@@ -1604,6 +1604,205 @@ textarea:focus-visible,
 }
 
 /* ==================================================
+   P12.5 — OPERATIONAL REASONING VISIBILITY
+   ==================================================
+   Presentation-only additions over the existing design
+   system: severity rails on the work queue, stage identity
+   for the investigation reasoning chain, and the promoted
+   recommendation reasoning. Everything reuses the audited
+   tokens — no new hues, no motion, no gradients, no
+   glassmorphism. Colour is never the sole carrier: chip
+   text, labels and verbatim copy remain the semantic
+   content; rails, washes and dots are aria-hidden-style
+   reinforcement.
+   ================================================== */
+
+/* Severity dots for Medium and Low: the existing neutral
+   vocabulary differentiated by weight, so all four
+   severities scan while unknown severities keep the plain
+   neutral dot. */
+
+.severity-dot-medium {
+  background: var(--text-tertiary);
+}
+
+.severity-dot-low {
+  background: var(--border-strong);
+}
+
+/* Work-queue severity rails: a left rail per row, keyed on
+   the presentation-only data-severity tone. Rails reinforce
+   the severity chip (the semantic source). Critical gets the
+   strongest rail plus a whisper-level wash; High the warning
+   rail; Medium/Low differentiate through the border ramp —
+   weight, not new colour. */
+
+.data-table tbody tr[data-severity="critical"] {
+  box-shadow: inset 3px 0 0 var(--critical);
+}
+
+.data-table tbody tr[data-severity="critical"] > td:first-child {
+  background: color-mix(in srgb, var(--critical) 5%, transparent);
+}
+
+.data-table tbody tr[data-severity="high"] {
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.data-table tbody tr[data-severity="medium"],
+.data-table tbody tr[data-severity="low"] {
+  box-shadow: inset 2px 0 0 var(--border-strong);
+}
+
+/* Selection stays authoritative: on a selected row the
+   accent rail replaces any severity rail (re-asserted at
+   higher specificity so no double rail can occur), and the
+   severity wash is cleared. Severity remains visible through
+   the chip and dot. */
+
+.data-table tbody tr.queue-row-selected[data-severity="critical"],
+.data-table tbody tr.queue-row-selected[data-severity="high"],
+.data-table tbody tr.queue-row-selected[data-severity="medium"],
+.data-table tbody tr.queue-row-selected[data-severity="low"] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.data-table tbody tr.queue-row-selected > td:first-child {
+  background: transparent;
+}
+
+/* Selected-exception panel: the row's severity rail echoes
+   on the focus panel. Selection itself is conveyed by the
+   panel's existence and aria-label, never by a second rail. */
+
+.section[data-severity="critical"] {
+  box-shadow: var(--shadow-1), inset 3px 0 0 var(--critical);
+}
+
+.section[data-severity="high"] {
+  box-shadow: var(--shadow-1), inset 3px 0 0 var(--warning);
+}
+
+.section[data-severity="medium"],
+.section[data-severity="low"] {
+  box-shadow: var(--shadow-1), inset 2px 0 0 var(--border-strong);
+}
+
+/* Promoted recommendation reasoning: the at-a-glance "why"
+   outside the factor disclosure, in the recommendation
+   card's accent-rail language. */
+
+.recommendation-why {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.recommendation-why .subsection-title {
+  margin: 0 0 6px;
+}
+
+.recommendation-why-basis {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.recommendation-why .trade-off-list {
+  margin-bottom: 0;
+}
+
+/* Impact frame (why it matters): the deadline facts framed
+   as one operational statement — the same accent-rail
+   callout vocabulary, in the accent tint. */
+
+.impact-frame {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  padding: 10px 14px;
+  margin: 0 0 16px;
+}
+
+.impact-frame-title {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.impact-frame p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* Outcome block: the case's current position consolidated at
+   the top of Workflow Action. Neutral surface; the state
+   chip carries the semantics, the block adds structure. */
+
+.outcome-block {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  padding: 10px 14px;
+  margin: 0 0 6px;
+}
+
+.outcome-block-title {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.outcome-block .workflow-state-line {
+  margin-bottom: 4px;
+}
+
+.outcome-block .section-caption {
+  margin: 0;
+}
+
+/* Reasoning-chain stage identity: subtle stage rails on the
+   workspace's core sections (P12.5 — classes set by the
+   section components). Facts use the border ramp; the
+   options and decision stages carry the accent family.
+   Secondary sections (history, sustainability, advisory)
+   keep the neutral default. */
+
+.section--facts,
+.section--options,
+.section--decision {
+  border-left-width: 3px;
+}
+
+.section--facts {
+  border-left-color: var(--border-strong);
+}
+
+.section--options {
+  border-left-color: var(--accent);
+}
+
+.section--decision {
+  border-left-color: var(--accent-dark);
+}
+
+/* ==================================================
+   END P12.5
+   ================================================== */
+
+/* ==================================================
    RESPONSIVE FOUNDATION
    ==================================================
    Three deliberate widths: full desktop, a mid-width

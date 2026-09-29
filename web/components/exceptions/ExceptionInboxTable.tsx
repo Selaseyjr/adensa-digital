@@ -18,11 +18,17 @@
  * (Mode and Location fold into the primary cell's stacked
  * reference line, so essential operational information and
  * the investigation link always remain accessible).
+ *
+ * P12.5: each row carries `data-severity` (presentation-only
+ * tone mapping from SeverityChip) so severity rails/tints can
+ * strengthen scanning. The selection rail stays authoritative:
+ * on a selected row the accent rail wins (CSS) and severity
+ * remains visible through its chip/dot, never a second rail.
  */
 
 import Link from "next/link";
 import type { InboxRow } from "@/lib/types/api";
-import { SeverityChip } from "@/components/SeverityChip";
+import { SeverityChip, severityToneOf } from "@/components/SeverityChip";
 import { verdictOf } from "./inbox-filters";
 
 export function ExceptionInboxTable({
@@ -54,6 +60,7 @@ export function ExceptionInboxTable({
             return (
               <tr
                 key={row.exception_id}
+                data-severity={severityToneOf(row.severity)}
                 className={isSelected ? "queue-row-selected" : undefined}
               >
                 <td>

@@ -97,6 +97,42 @@ describe("situation & impact", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  // --------------------------------------------------
+  // P12.5 — REASONING CHAIN: WHY IT MATTERS
+  // --------------------------------------------------
+
+  it("frames the deadline facts as operational impact from existing fields", () => {
+    const { container } = render(<SituationImpact context={makeContext()} />);
+
+    const frame = container.querySelector(".impact-frame");
+
+    expect(frame).not.toBeNull();
+    // Verbatim contract fields, one statement: required vs
+    // estimated arrival plus current shipment status.
+    expect(frame!.textContent).toContain("Delivery is required by 2026-09-15.");
+    expect(frame!.textContent).toContain("Estimated arrival is 2026-09-21.");
+    expect(frame!.textContent).toContain("Shipment status: In Transit.");
+  });
+
+  it("omits the arrival clause honestly when no estimated arrival exists", () => {
+    const { container } = render(
+      <SituationImpact context={makeContext({ estimated_arrival: null })} />,
+    );
+
+    const frame = container.querySelector(".impact-frame");
+
+    expect(frame).not.toBeNull();
+    expect(frame!.textContent).toContain("Delivery is required by 2026-09-15.");
+    expect(frame!.textContent).not.toContain("Estimated arrival is");
+    expect(frame!.textContent).toContain("Shipment status: In Transit.");
+  });
+
+  it("carries the facts stage class for the reasoning chain", () => {
+    const { container } = render(<SituationImpact context={makeContext()} />);
+
+    expect(container.querySelector("section.section--facts")).not.toBeNull();
+  });
 });
 
 describe("decision support", () => {
@@ -118,11 +154,13 @@ describe("decision support", () => {
   it("renders rationale factors with weights and contributions", () => {
     render(<DecisionSupport assessment={makeAssessment()} />);
 
-    expect(screen.getByText("Why this recommendation")).toBeInTheDocument();
+    expect(screen.getByText("Factor breakdown & weights")).toBeInTheDocument();
 
-    // P8.4: the rationale is a native disclosure; scope within it.
+    // P12.5: the factor table remains a native disclosure —
+    // the at-a-glance reasoning block now carries the
+    // confidence basis and trade-offs outside it.
     const rationale = screen
-      .getByText("Why this recommendation")
+      .getByText("Factor breakdown & weights")
       .closest("details")!;
 
     expect(within(rationale).getByText("Cost")).toBeInTheDocument();
@@ -132,6 +170,14 @@ describe("decision support", () => {
         element?.textContent === "0.8 (0.24)" ? true : false,
       ),
     ).toBeInTheDocument(); // score (contribution)
+  });
+
+  it("renders the confidence basis verbatim", () => {
+    render(<DecisionSupport assessment={makeAssessment()} />);
+
+    // P8.4 promotion of the confidence basis into the
+    // disclosure itself (P12.5 keeps this verbatim inside the
+    // at-a-glance reasoning block).
     expect(
       screen.getByText(
         "Score separation between the leading options and the field.",
@@ -158,7 +204,6 @@ describe("decision support", () => {
     expect(screen.getByText("Alternative")).toBeInTheDocument();
     expect(screen.getByText(/OPT-0002 — Air/)).toBeInTheDocument();
   });
-
   it("presents the no-feasible-recovery outcome without inventing a recommendation", () => {
     render(
       <DecisionSupport
@@ -189,6 +234,89 @@ describe("decision support", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Recommended")).not.toBeInTheDocument();
     expect(screen.getByText("Infeasible")).toBeInTheDocument();
+  });
+
+  // --------------------------------------------------
+  // P12.5 — REASONING CHAIN: OPTIONS → RECOMMENDATION
+  // --------------------------------------------------
+
+  it("promotes the recommendation reasoning outside the factor disclosure", () => {
+    render(<DecisionSupport assessment={makeAssessment()} />);
+
+    const whyBlock = document.querySelector(".recommendation-why");
+
+    expect(whyBlock).not.toBeNull();
+    expect(within(whyBlock as HTMLElement).getByText("Why this recommendation")).toBeInTheDocument();
+    // The confidence basis reads at a glance — verbatim, not summarized.
+    expect(
+      within(whyBlock as HTMLElement).getByText(
+        "Score separation between the leading options and the field.",
+      ),
+    ).toBeInTheDocument();
+    // The trade-off sentence is likewise visible without opening anything.
+    expect(
+      within(whyBlock as HTMLElement).getByText((_, element) =>
+        element?.tagName === "LI" &&
+        element?.textContent === "OPT-0002 (Air) is stronger on Transit."
+          ? true
+          : false,
+      ),
+    ).toBeInTheDocument();
+    // The detailed factor table stays disclosed behind its own summary.
+    expect(
+      screen.getByText("Factor breakdown & weights").closest("details"),
+    ).not.toBeNull();
+  });
+
+  it("renders no reasoning block when the rationale is absent", () => {
+    render(
+      <DecisionSupport
+        assessment={makeAssessment({ rationale: null })}
+      />,
+    );
+
+    expect(
+      document.querySelector(".recommendation-why"),
+    ).toBeNull();
+    expect(
+      screen.queryByText("Why this recommendation"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("discloses evaluated options in the recommendation branch when the contract supplies them", () => {
+    render(
+      <DecisionSupport
+        assessment={makeAssessment({
+          evaluated_options: [
+            {
+              option_id: "OPT-0009",
+              transport_mode: "Sea",
+              carrier_id: "CAR-001",
+              estimated_cost: 2100,
+              estimated_transit_days: 21,
+              risk_score: 0.9,
+              feasible: false,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const summary = screen.getByText(/Also evaluated — not recommended/);
+    const details = summary.closest("details");
+
+    expect(details).not.toBeNull();
+    expect(within(details as HTMLElement).getByText("OPT-0009")).toBeInTheDocument();
+    // The verdict column keeps the backend's own feasibility verdict.
+    expect(within(details as HTMLElement).getByText("Infeasible")).toBeInTheDocument();
+  });
+
+  it("renders no evaluated-options disclosure in the recommendation branch when none are supplied", () => {
+    // The production contract sends [] alongside a recommendation;
+    // the disclosure must simply not exist rather than fabricate rows.
+    render(<DecisionSupport assessment={makeAssessment()} />);
+
+    expect(screen.queryByText(/Also evaluated — not recommended/)).not.toBeInTheDocument();
   });
 });
 
@@ -412,6 +540,76 @@ describe("workflow action", () => {
     );
 
     expect(screen.queryByText("Carrier escalation")).not.toBeInTheDocument();
+  });
+
+  // --------------------------------------------------
+  // P12.5 — REASONING CHAIN: CURRENT OUTCOME
+  // --------------------------------------------------
+
+  it("consolidates the current outcome with the backend's own state and reason", () => {
+    const { container } = render(
+      <WorkflowAction
+        state={makeInvestigationState()}
+        interventions={[]}
+        exceptionId="EXC-001529"
+        latestActionId="ACT-000001"
+      />,
+    );
+
+    const outcome = container.querySelector(".outcome-block");
+
+    expect(outcome).not.toBeNull();
+    expect(
+      within(outcome as HTMLElement).getByText("Current outcome"),
+    ).toBeInTheDocument();
+    expect(
+      within(outcome as HTMLElement).getByText("Decision required"),
+    ).toBeInTheDocument();
+    expect(
+      within(outcome as HTMLElement).getByText(
+        "A recovery action awaits a planner approve/reject decision.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("carries the decision stage class for the reasoning chain", () => {
+    const { container } = render(
+      <WorkflowAction
+        state={makeInvestigationState()}
+        interventions={[]}
+        exceptionId="EXC-001529"
+        latestActionId="ACT-000001"
+      />,
+    );
+
+    expect(
+      container.querySelector("section.section--decision"),
+    ).not.toBeNull();
+  });
+
+  it("keeps the decision stage class across supported states", () => {
+    // The stage class is presentation-only; it must not depend
+    // on which workflow state the classifier reports.
+    for (const stateName of [
+      "Awaiting execution",
+      "Executed — still open",
+      "No system recovery available",
+      "Resolved",
+    ]) {
+      const { container, unmount } = render(
+        <WorkflowAction
+          state={makeInvestigationState({ state: stateName })}
+          interventions={[]}
+          exceptionId="EXC-001529"
+          latestActionId="ACT-000001"
+        />,
+      );
+
+      expect(
+        container.querySelector("section.section--decision"),
+      ).not.toBeNull();
+      unmount();
+    }
   });
 });
 
@@ -699,11 +897,17 @@ describe("progressive disclosure", () => {
   it("renders the rationale as a native disclosure with a summary", () => {
     render(<DecisionSupport assessment={makeAssessment()} />);
 
+    // P12.5: the disclosure summary is the factor table; the
+    // at-a-glance reasoning block is NOT a disclosure.
     const rationaleSummary = screen
-      .getByText("Why this recommendation")
+      .getByText("Factor breakdown & weights")
       .closest("summary");
     expect(rationaleSummary).not.toBeNull();
     expect(rationaleSummary!.closest("details")).not.toBeNull();
+
+    const whyTitle = screen.getByText("Why this recommendation");
+    expect(whyTitle.closest("details")).toBeNull();
+    expect(whyTitle.closest("summary")).toBeNull();
   });
 
   it("renders evaluated infeasible options as a native disclosure", () => {

@@ -3,6 +3,15 @@
  * context contract supplies, presented in the planner's
  * reading order — what happened, where/when, impact,
  * required delivery. No reconstruction, no new rules.
+ *
+ * P12.5 (reasoning chain — why it matters): the deadline
+ * facts the contract already supplies (required delivery vs
+ * estimated arrival, current shipment status) are framed as
+ * an operational impact statement before the full fact
+ * table. Pure presentational arithmetic (which date is
+ * later) over rendered strings — no recomputation of any
+ * operational value; when no estimated arrival exists the
+ * sentence says only that delivery is required by the date.
  */
 
 import type { ExceptionContext } from "@/lib/types/api";
@@ -14,10 +23,24 @@ export function SituationImpact({
   context: ExceptionContext;
 }) {
   return (
-    <section className="section" aria-label="Situation and impact">
+    <section
+      className="section section--facts"
+      aria-label="Situation and impact"
+    >
       <h3 className="section-title">Situation &amp; Impact</h3>
 
       <p className="situation-description">{context.description}</p>
+
+      <div className="impact-frame" role="note" aria-label="Delivery impact">
+        <span className="impact-frame-title">Why it matters</span>
+        <p>
+          Delivery is required by {context.required_delivery_date}.
+          {context.estimated_arrival !== null
+            ? ` Estimated arrival is ${context.estimated_arrival}.`
+            : ""}{" "}
+          Shipment status: {context.shipment_status}.
+        </p>
+      </div>
 
       <div className="table-wrap">
         <table className="data-table situation-table">
