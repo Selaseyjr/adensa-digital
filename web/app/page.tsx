@@ -1,18 +1,36 @@
 /**
- * Control Tower — the first functional product surface.
+ * Command Centre (v2 — "The Living Supply Chain").
  *
- * Server Component consuming GET /v1/control-tower/summary
- * through the typed API client. All four deliberate states
- * (loading / unavailable / unexpected / data) are handled
- * here; the client computes no metrics.
+ * The flagship surface, structured as the manager's actual
+ * attention sequence:
  *
- * Loading is rendered via the Suspense boundary below, so
- * the shell paints immediately while operational data is
- * fetched on the server.
+ *   SEE        the deck (operational position) + Critical Attention
+ *   UNDERSTAND the Living Operational Flow + queue composition
+ *   ACT        What Needs Attention + Follow-up Required
+ *   MONITOR    Analytics + Recently Resolved
+ *
+ * Data discipline (unchanged from P8.8/P12.2): every number is
+ * rendered exactly as the /v1 contract reports it — the client
+ * computes no metrics. The three datasets (summary, inbox,
+ * analytics) are fetched strictly sequentially inside one
+ * streamed section, so the page never holds more than one
+ * in-flight request against the API — the local SQLite
+ * backend's per-request connection handling is single-thread
+ * bound, and the frontend respects that envelope rather than
+ * racing it. One failed dependency degrades only its own zone
+ * through the shared honest state panels.
+ *
+ * The bounded inbox is presented through two presentation-only
+ * lenses (critical slice, attention queue) without re-ranking
+ * the backend's operational order.
  */
 
 import { cache, Suspense } from "react";
-import { getAnalyticsOverview, getControlTowerSummary } from "@/lib/api/client";
+import {
+  getAnalyticsOverview,
+  getControlTowerSummary,
+  getExceptionInbox,
+} from "@/lib/api/client";
 import {
   EmptyPanel,
   LoadingPanel,
@@ -24,12 +42,20 @@ import { QueueCompositionBand } from "@/components/control-tower/QueueCompositio
 import { FollowUpTable } from "@/components/control-tower/FollowUpTable";
 import { RecentlyResolvedTable } from "@/components/control-tower/RecentlyResolvedTable";
 import { AnalyticsSection } from "@/components/control-tower/AnalyticsSection";
+import { NetworkStrip } from "@/components/control-tower/NetworkStrip";
+import { CriticalAttention } from "@/components/control-tower/CriticalAttention";
+import { OperationalFlow } from "@/components/control-tower/OperationalFlow";
+import { AttentionQueue } from "@/components/control-tower/AttentionQueue";
+import { ManagerLookup } from "@/components/control-tower/ManagerLookup";
+import type { ControlTowerSummary, InboxRow } from "@/lib/types/api";
 
-// P12.2: the deck (title + context + KPI tiles) and the light
-// operational sections below it are separate Suspense units,
-// but they consume the SAME snapshot — cache() dedupes the
-// fetch within the request so the summary is fetched once.
+// One request-scoped snapshot per dataset: the deck band and
+// every operational section consume the SAME summary fetch,
+// the two inbox lenses share the SAME bounded inbox fetch,
+// and analytics stays its own dependency so an analytics
+// failure cannot take down the operational position.
 const getSummary = cache(getControlTowerSummary);
+const getInbox = cache(getExceptionInbox);
 
 /** The deck's KPI band. Non-data states render nothing here —
  * the operational sections below carry the honest state panel. */
@@ -41,67 +67,30 @@ async function DeckMetrics() {
   return <ControlTowerMetrics summary={result.data} />;
 }
 
-async function OperationalSections() {
-  const result = await getSummary();
-
-  switch (result.kind) {
-    case "unavailable":
-      return <UnavailablePanel message={result.message} />;
-    case "unexpected":
-      return <UnexpectedPanel message={result.message} />;
-    case "empty":
-      return (
-        <EmptyPanel message="No operational data is available yet." />
-      );
-    case "data":
-      return (
-        <>
-          <section className="section" aria-labelledby="composition-title">
-            <h2 id="composition-title" className="section-title">
-              Queue Composition
-            </h2>
-            <p className="section-caption">
-              Proportions of the counts above, at the current snapshot —
-              the bounded work-queue split and the critical share of the
-              open population. No history is implied.
-            </p>
-            <QueueCompositionBand summary={result.data} />
-          </section>
-          <AnalyticsOverviewSection />
-          <section className="section" aria-labelledby="follow-up-title">
-            <h2 id="follow-up-title" className="section-title">
-              Follow-up Required
-            </h2>
-            <p className="section-caption">
-              Executed recovery that did not resolve the exception — renewed
-              planner attention required.
-            </p>
-            <FollowUpTable entries={result.data.follow_up_queue} />
-          </section>
-          <section className="section" aria-labelledby="resolved-title">
-            <h2 id="resolved-title" className="section-title">
-              Recently Resolved
-            </h2>
-            <p className="section-caption">
-              Resolution paths are established from persisted evidence:
-              system-executed recovery or recorded manual intervention.
-            </p>
-            <RecentlyResolvedTable entries={result.data.recently_resolved} />
-          </section>
-        </>
-      );
+/** The critical slice and the manager queue both present the
+ * same bounded inbox through different lenses; the empty
+ * state renders the calm explicit verdict once each. */
+function InboxLenses({
+  inbox,
+  summary,
+}: {
+  inbox: InboxRow[] | null;
+  summary: ControlTowerSummary | null;
+}) {
+  if (inbox === null) {
+    return (
+      <EmptyPanel message="The work queue is clear — no open exceptions right now." />
+    );
   }
+  return (
+    <>
+      <CriticalAttention rows={inbox} />
+      <AttentionQueue rows={inbox} summary={summary} />
+    </>
+  );
 }
 
-/**
- * The analytical canvas, fetched independently of the
- * operational snapshot so an analytics fetch failure does not
- * take down the operational position. All four result states
- * are handled deliberately: panels render on data, the honest
- * analytical empty state renders on `empty`, and the shared
- * unavailable/unexpected panels render on failure.
- */
-async function AnalyticsOverviewSection() {
+async function AnalyticsZone() {
   const analytics = await getAnalyticsOverview();
   switch (analytics.kind) {
     case "unavailable":
@@ -126,22 +115,125 @@ async function AnalyticsOverviewSection() {
   }
 }
 
+/**
+ * The whole operational body, fetched strictly sequentially:
+ * summary → inbox → analytics. Sections render in the
+ * SEE → UNDERSTAND → ACT → MONITOR order as each dependency
+ * resolves; every zone keeps its own honest failure state.
+ */
+async function CommandCentreSections() {
+  const summaryResult = await getSummary();
+
+  if (
+    summaryResult.kind === "unavailable" ||
+    summaryResult.kind === "unexpected" ||
+    summaryResult.kind === "empty"
+  ) {
+    switch (summaryResult.kind) {
+      case "unavailable":
+        return <UnavailablePanel message={summaryResult.message} />;
+      case "unexpected":
+        return <UnexpectedPanel message={summaryResult.message} />;
+      case "empty":
+        return <EmptyPanel message="No operational data is available yet." />;
+    }
+  }
+
+  const summary = summaryResult.data;
+  const inboxResult = await getInbox();
+  const inbox =
+    inboxResult.kind === "data"
+      ? inboxResult.data
+      : null;
+
+  return (
+    <>
+      {/* SEE — first operational priority. */}
+      <InboxLenses inbox={inbox} summary={summary} />
+
+      {/* UNDERSTAND — the loop, then the composition detail. */}
+      <section className="section section-flow" aria-labelledby="flow-title">
+        <h2 id="flow-title" className="section-title">
+          Living Operational Flow
+        </h2>
+        <p className="section-caption">
+          The operational loop at this snapshot — Detect → Recommend → Decide
+          → Execute → Resolve. Counts are the summary populations; the system
+          continuously processes the network and brings meaningful situations
+          to you.
+        </p>
+        <OperationalFlow summary={summary} />
+      </section>
+
+      <section className="section" aria-labelledby="composition-title">
+        <h2 id="composition-title" className="section-title">
+          Queue Composition
+        </h2>
+        <p className="section-caption">
+          Proportions of the counts above, at the current snapshot —
+          the bounded work-queue split and the critical share of the
+          open population. No history is implied.
+        </p>
+        <QueueCompositionBand summary={summary} />
+      </section>
+
+      {/* ACT — follow-up work requiring renewed attention. */}
+      <section className="section" aria-labelledby="follow-up-title">
+        <h2 id="follow-up-title" className="section-title">
+          Follow-up Required
+        </h2>
+        <p className="section-caption">
+          Executed recovery that did not resolve the exception — renewed
+          planner attention required.
+        </p>
+        <FollowUpTable entries={summary.follow_up_queue} />
+      </section>
+
+      {/* MONITOR — analytics, then the positive resolved zone. */}
+      <AnalyticsZone />
+
+      <section className="section" aria-labelledby="resolved-title">
+        <h2 id="resolved-title" className="section-title">
+          Recently Resolved
+        </h2>
+        <p className="section-caption">
+          Resolution paths are established from persisted evidence:
+          system-executed recovery or recorded manual intervention.
+          This is the system working as designed — recovery, not just
+          alarms.
+        </p>
+        <RecentlyResolvedTable entries={summary.recently_resolved} />
+      </section>
+    </>
+  );
+}
+
 export default function ControlTowerPage() {
   return (
     <>
+      {/* SEE — the opening command zone: identity, the living
+          network, the manager's question entry point. Static
+          content paints with the shell; the KPI band streams
+          in on the shared summary snapshot. */}
       <div className="command-deck deck-bleed">
-        <h1 className="command-deck-title">Control Tower</h1>
+        <div className="command-deck-eyebrow">Adensa Digital · Operations</div>
+        <h1 className="command-deck-title">Command Centre</h1>
         <p className="command-deck-context">
           The at-a-glance operational position: open exceptions, decisions
           awaiting planners, recoveries awaiting execution, and work requiring
           follow-up. <strong>Executed does not necessarily mean resolved.</strong>
         </p>
+        <NetworkStrip />
         <Suspense fallback={null}>
           <DeckMetrics />
         </Suspense>
+        <ManagerLookup />
       </div>
-      <Suspense fallback={<LoadingPanel label="control tower" />}>
-        <OperationalSections />
+
+      {/* SEE → UNDERSTAND → ACT → MONITOR — one streamed body,
+          strictly sequential fetches (see the component note). */}
+      <Suspense fallback={<LoadingPanel label="command centre" />}>
+        <CommandCentreSections />
       </Suspense>
     </>
   );

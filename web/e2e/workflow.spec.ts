@@ -38,7 +38,7 @@ test.describe("Control Tower", () => {
 
     // The deck: title + the honest count semantics note.
     await expect(
-      page.getByRole("heading", { name: "Control Tower", level: 1 }),
+      page.getByRole("heading", { name: "Command Centre", level: 1 }),
     ).toBeVisible();
     await expect(
       page.getByText("Executed does not necessarily mean resolved."),

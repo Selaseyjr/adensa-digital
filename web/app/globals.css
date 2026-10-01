@@ -2857,3 +2857,483 @@ textarea:focus-visible,
     padding: 4px 10px;
   }
 }
+
+/* ==================================================
+   COMMAND CENTRE v2 — THE LIVING SUPPLY CHAIN
+   ==================================================
+   The flagship surface, built on the v1 token system.
+   New vocabulary: the hero network strip, the manager
+   lookup, Critical Attention, the living operational
+   flow, the attention queue, and the compact menu
+   navigation. Everything reuses the committed tokens;
+   motion is one-shot or none; reduced-motion guards
+   apply globally.
+   ================================================== */
+
+/* -- Hero zone ---------------------------------------------------- */
+
+.command-deck-eyebrow {
+  font-size: var(--text-note);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-on-dark);
+  margin-bottom: var(--space-2);
+}
+
+.network-strip {
+  margin: var(--space-2) 0 var(--space-5);
+  max-width: 640px;
+}
+
+.network-strip svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.network-strip-line {
+  stroke: var(--shell-border);
+  stroke-width: 1.5;
+}
+
+/* The one-shot activity wash: travels the line once on load —
+   system activity, not decoration. Neutralized by the global
+   reduced-motion guard (and [data-motion="reduced"]). */
+.network-strip-pulse {
+  stroke: var(--accent-on-dark);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 26 620;
+  stroke-dashoffset: 646;
+  animation: network-strip-pulse 1.8s var(--ease-departure) 1 both;
+}
+
+@keyframes network-strip-pulse {
+  to {
+    stroke-dashoffset: -26;
+  }
+}
+
+.network-strip-node circle {
+  fill: var(--shell-tile);
+  stroke: var(--accent-on-dark);
+  stroke-width: 1.5;
+}
+
+.network-strip-node-halo {
+  fill: none;
+  stroke: var(--accent-on-dark);
+  stroke-width: 1;
+  opacity: 0.35;
+}
+
+.network-strip-node text {
+  fill: var(--shell-muted);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+/* -- Manager lookup ---------------------------------------------- */
+
+.manager-lookup {
+  margin-top: var(--space-4);
+  max-width: 560px;
+}
+
+.manager-lookup-title {
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: var(--shell-text);
+  margin: 0 0 var(--space-2);
+}
+
+.manager-lookup-form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.manager-lookup-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-sm);
+  background: var(--shell-tile);
+  color: var(--shell-text);
+  font-family: inherit;
+  font-size: var(--text-base);
+  padding: 0.45rem 0.7rem;
+}
+
+.manager-lookup-input::placeholder {
+  color: var(--shell-muted);
+}
+
+.manager-lookup-submit {
+  flex: 0 0 auto;
+}
+
+.manager-lookup-note {
+  font-size: var(--text-note);
+  color: var(--shell-muted);
+  margin: var(--space-2) 0 0;
+}
+
+/* -- Critical Attention ------------------------------------------ */
+
+.section-critical-attention {
+  border-left: 3px solid var(--critical);
+}
+
+.critical-attention-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.critical-attention-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.critical-attention-item:first-child {
+  border-top: none;
+}
+
+.critical-attention-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.critical-attention-type {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.critical-attention-why {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.critical-attention-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.critical-attention-ref {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.critical-attention-empty,
+.attention-queue-empty {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  padding: var(--space-4);
+  font-size: 0.875rem;
+}
+
+/* -- Living Operational Flow ------------------------------------- */
+
+.operational-flow {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+
+.operational-flow-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+  color: inherit;
+  transition: border-color var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard);
+}
+
+.operational-flow-link:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.operational-flow-node {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.operational-flow-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.operational-flow-value {
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.operational-flow-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.operational-flow-caption {
+  font-size: var(--text-note);
+  color: var(--text-tertiary);
+}
+
+/* A stage with work in it carries the quiet accent — state
+   first, decoration never. Zero counts stay calm. */
+.operational-flow-step.is-live .operational-flow-index {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* -- What Needs Attention ---------------------------------------- */
+
+.attention-queue-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.attention-queue-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.attention-queue-item:first-child {
+  border-top: none;
+}
+
+.attention-queue-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.attention-queue-type {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.attention-queue-why {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.attention-queue-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.attention-queue-ref {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.attention-queue-note {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: var(--space-3) 0 0;
+}
+
+.attention-queue-note a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* -- Compact menu navigation ------------------------------------- */
+
+.app-nav {
+  position: relative;
+}
+
+.app-nav summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(var(--control-height) - 6px);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  color: var(--shell-muted);
+  cursor: pointer;
+  list-style: none;
+  transition: background-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.app-nav summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-nav summary:hover {
+  background: var(--shell-hover);
+  color: var(--shell-text);
+}
+
+.app-nav summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--shell-bg), 0 0 0 4px var(--accent-on-dark);
+  border-radius: var(--radius-sm);
+}
+
+.app-nav-burger {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 16px;
+}
+
+.app-nav-burger span {
+  display: block;
+  height: 1.5px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.app-nav-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  min-width: 230px;
+  max-width: calc(100vw - 24px);
+  background: var(--shell-tile);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-3);
+}
+
+.app-nav-group-title {
+  font-size: var(--text-note);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--shell-muted);
+  margin: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.app-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+}
+
+.app-nav-list li:last-child {
+  margin-bottom: 0;
+}
+
+.app-nav-list a,
+.app-nav-list span {
+  display: block;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  color: var(--shell-text);
+}
+
+.app-nav-list a {
+  transition: background-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.app-nav-list a:hover {
+  background: var(--shell-hover);
+  color: var(--shell-text);
+}
+
+.app-nav-list a[aria-current="page"] {
+  background: var(--shell-current);
+  color: var(--accent-on-dark);
+  font-weight: 600;
+}
+
+.app-nav-list a:focus-visible {
+  box-shadow: 0 0 0 2px var(--shell-tile), 0 0 0 4px var(--accent-on-dark);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.app-nav-list-planned span {
+  color: var(--shell-muted);
+}
+
+.app-nav-group-title-planned {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--shell-border);
+  padding-top: var(--space-3);
+}
+
+/* -- Responsive -------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .operational-flow {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .manager-lookup-form {
+    flex-wrap: wrap;
+  }
+
+  .manager-lookup-input {
+    flex: 1 1 100%;
+  }
+
+  .manager-lookup-submit {
+    flex: 1 1 auto;
+  }
+
+  .app-nav-panel {
+    right: auto;
+    left: 0;
+  }
+}

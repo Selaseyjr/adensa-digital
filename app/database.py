@@ -47,7 +47,17 @@ def get_sqlite_path():
 def _connect_sqlite(path):
     """Open the SQLite backend with the project's connection contract."""
 
-    connection = sqlite3.connect(path)
+    # check_same_thread=False is required by the application's
+    # request path: FastAPI runs the synchronous get_db
+    # dependency through its threadpool, so a request's
+    # connection is created, used and closed on potentially
+    # different threadpool threads. sqlite3's default affinity
+    # check rejects that cross-thread use
+    # (sqlite3.ProgrammingError), which surfaced as HTTP 500s
+    # once concurrent reads hit the API. Cross-request
+    # isolation is unchanged: every request still opens its
+    # own connection here.
+    connection = sqlite3.connect(path, check_same_thread=False)
     connection.row_factory = sqlite3.Row
 
     # Foreign-key enforcement must be enabled for every SQLite connection.

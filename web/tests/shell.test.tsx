@@ -49,7 +49,7 @@ describe("application shell", () => {
     const nav = screen.getByRole("navigation", { name: "Primary" });
 
     const expected = [
-      ["Control Tower", "/"],
+      ["Command Centre", "/"],
       ["Exceptions", "/exceptions"],
       ["Operations", "/operations"],
       ["Administration", "/administration"],
@@ -74,7 +74,7 @@ describe("application shell", () => {
       "page",
     );
     expect(
-      within(nav).getByRole("link", { name: "Control Tower" }),
+      within(nav).getByRole("link", { name: "Command Centre" }),
     ).not.toHaveAttribute("aria-current");
   });
 

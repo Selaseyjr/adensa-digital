@@ -10,6 +10,10 @@ The seam under test:
   redacted description) while the connection factory fails fast
   — PostgreSQL is not implemented in this checkpoint;
 - credentials never survive in a loggable description;
+- SQLite connections survive the application's threaded
+  request path (FastAPI runs the synchronous get_db
+  dependency through its threadpool, so a connection is
+  created, used and closed on different threads);
 - the migration runner's version state stays pinned to
   PRAGMA user_version on SQLite connections.
 
@@ -20,11 +24,16 @@ configuration objects.
 
 import os
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from fastapi.testclient import TestClient
+
+from tests.test_api import TEST_API_KEY
 
 import app.database as database
 from app import migrations
+from app.api import app
 from app.config import (
     DatabaseConfig,
     get_database_config,
@@ -238,6 +247,89 @@ def test_default_connect_timeout_is_applied_without_overriding():
 
     assert "connect_timeout=3" in preserved
     assert "connect_timeout=10" not in preserved
+
+
+# ==================================================
+# THREADED REQUEST PATH (SQLITE THREAD AFFINITY)
+# ==================================================
+
+# Regression tests for the sqlite3.ProgrammingError found
+# under the Command Centre's concurrent data fetching: the
+# API's synchronous get_db dependency executes in FastAPI's
+# threadpool, so a request's connection is created in one
+# threadpool thread and used/closed in another. sqlite3's
+# default same-thread check rejects that, producing HTTP 500s
+# under concurrent load. The factory must therefore open the
+# SQLite backend with check_same_thread=False. The PostgreSQL
+# path (psycopg) is untouched: it never enforced thread
+# affinity.
+
+
+def test_sqlite_factory_connection_survives_cross_thread_use():
+    """
+    A connection from the production factory can execute and
+    be closed from threads other than the one that created it
+    — exactly what the threaded get_db dependency requires.
+    With the default affinity check these operations raise
+    sqlite3.ProgrammingError.
+    """
+
+    connection = database.get_connection()
+
+    def _use_from_another_thread():
+        cursor = connection.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchall()
+
+    def _close_from_another_thread():
+        connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_use_from_another_thread).result(timeout=30)
+        executor.submit(_close_from_another_thread).result(timeout=30)
+
+
+def test_concurrent_threadpool_requests_do_not_raise_thread_affinity_errors(
+    seeded_database,
+    monkeypatch,
+):
+    """
+    Concurrent requests through the application's real request
+    path all succeed: each request's get_db dependency runs in
+    the TestClient's worker portal, off the creating thread,
+    mirroring the production threadpool. With the affinity
+    defect present, these requests raise
+    sqlite3.ProgrammingError ("SQLite objects created in a
+    thread can only be used in that same thread") and the
+    endpoints fail.
+    """
+
+    monkeypatch.setattr("app.api.ADENSA_API_KEY", TEST_API_KEY)
+
+    paths = (
+        "/v1/control-tower/summary",
+        "/v1/exceptions/inbox",
+        "/v1/analytics/overview",
+    )
+
+    with TestClient(app) as client:
+
+        client.headers.update({"X-API-Key": TEST_API_KEY})
+
+        request_count = 12
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = [
+                executor.submit(client.get, paths[i % len(paths)])
+                for i in range(request_count)
+            ]
+
+            responses = [
+                future.result(timeout=60) for future in futures
+            ]
+
+    for response in responses:
+        assert response.status_code == 200, response.text
 
 
 # ==================================================
