@@ -208,9 +208,9 @@ export function DecisionSupport({
   return (
     <section
       className="section section--options"
-      aria-label="Decision support"
+      aria-label="Recommendation and decision brief"
     >
-      <h3 className="section-title">Decision Support</h3>
+      <h3 className="section-title">Recommendation &amp; Decision Brief</h3>
 
       {assessment.recommendation !== null ? (
         <>

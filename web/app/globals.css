@@ -3337,3 +3337,33 @@ textarea:focus-visible,
     left: 0;
   }
 }
+
+/* ==================================================
+   P13 — INVESTIGATION WORKSPACE VOCABULARY
+   ==================================================
+
+   The workspace joins the Command Centre v2 product
+   language with the minimum new vocabulary: a deck-style
+   eyebrow over the orientation layer, and flagged-reason
+   frames in the established impact-frame idiom. Existing
+   tokens, chips, tables, disclosures and state panels are
+   reused unchanged; both themes inherit through the token
+   remap, and the global reduced-motion guard covers the
+   additions (they introduce no animation). */
+
+.p13-eyebrow {
+  font-size: var(--text-note);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* The workspace eyebrow sits on the theme-varying page
+     ground (not the fixed-dark deck), so it takes the
+     theme-aware accent — not --accent-on-dark, which is
+     contrast-matched to the deck's navy gradient. */
+  color: var(--accent);
+  margin-bottom: var(--space-2);
+}
+
+.flagged-frame {
+  margin-top: var(--space-3);
+}

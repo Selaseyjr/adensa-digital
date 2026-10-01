@@ -1,11 +1,14 @@
 /**
- * The Investigation Workspace: the operational screen a
- * planner reaches by selecting an exception from the work
- * queue. Hierarchy (W4, carried into the web client):
+ * The Investigation Workspace (P13): the operational screen a
+ * planner reaches from the Command Centre's attention queue.
+ * Hierarchy — the investigation narrative (SEE → INVESTIGATE
+ * → DECIDE → ACT → MONITOR):
  *
- *   State → Situation & Impact → Decision Support →
- *   Evidence / Operational History → AI Advisory →
- *   Workflow Action
+ *   Identity (header + workflow progression) →
+ *   Why It Was Flagged → Situation & Impact →
+ *   Operational History (timeline) →
+ *   Recommendation & Decision Brief → Sustainability →
+ *   AI Advisory → Workflow Action (decision & action)
  *
  * Data fetching follows the P3 architecture: Server
  * Components → this module's data loader → the typed API
@@ -42,6 +45,7 @@ import {
 } from "@/components/StatePanels";
 import { WorkspaceHeader } from "@/components/investigation/WorkspaceHeader";
 import { SituationImpact } from "@/components/investigation/SituationImpact";
+import { WhyItWasFlagged } from "@/components/investigation/WhyItWasFlagged";
 import { DecisionSupport } from "@/components/investigation/DecisionSupport";
 import { OperationalHistory } from "@/components/investigation/OperationalHistory";
 import { SustainabilitySection } from "@/components/investigation/SustainabilitySection";
@@ -130,15 +134,17 @@ async function InvestigationWorkspace({
   // In-page section index: every wrapper below renders in this
   // path (each section degrades to its own honest panel rather
   // than disappearing), so the anchor list is static and only
-  // ever targets sections that exist.
+  // ever targets sections that exist. Labels carry the P13
+  // investigation vocabulary; each maps 1:1 to a page anchor.
   const sections: WorkspaceSectionRef[] = [
-    { id: "state", label: "State" },
-    { id: "situation", label: "Situation & Impact" },
-    { id: "decision-support", label: "Decision Support" },
-    { id: "history", label: "History" },
-    { id: "sustainability", label: "Sustainability" },
+    { id: "state", label: "Overview" },
+    { id: "flagged", label: "Why It Was Flagged" },
+    { id: "situation", label: "Operational Context" },
+    { id: "history", label: "Timeline" },
+    { id: "decision-support", label: "Recommendation" },
+    { id: "sustainability", label: "Impact" },
     { id: "advisory", label: "AI Advisory" },
-    { id: "workflow-action", label: "Workflow Action" },
+    { id: "workflow-action", label: "Decision & Action" },
   ];
 
   return (
@@ -173,6 +179,13 @@ async function InvestigationWorkspace({
         )}
       </div>
 
+      <div id="flagged">
+        <WhyItWasFlagged
+          context={data.context.data}
+          state={state}
+        />
+      </div>
+
       <div id="situation">
         <SituationImpact context={data.context.data} />
       </div>
@@ -181,8 +194,8 @@ async function InvestigationWorkspace({
         {data.assessment.kind === "data" ? (
           <DecisionSupport assessment={data.assessment.data} />
         ) : data.assessment.kind === "empty" ? (
-          <section className="section" aria-label="Decision support">
-            <h3 className="section-title">Decision Support</h3>
+          <section className="section" aria-label="Recommendation and decision brief">
+            <h3 className="section-title">Recommendation &amp; Decision Brief</h3>
             <p className="section-caption">
               No recovery assessment exists for this exception.
             </p>
@@ -190,7 +203,7 @@ async function InvestigationWorkspace({
         ) : (
           <OptionalSectionFallback
             result={data.assessment}
-            section="Decision support"
+            section="Recommendation & decision brief"
           />
         )}
       </div>
@@ -284,6 +297,7 @@ export default async function InvestigationPage({
         <span aria-current="page">{exceptionId}</span>
       </nav>
       <h1 className="page-title">Investigation Workspace</h1>
+      <p className="p13-eyebrow">Adensa Digital · Investigation</p>
       <p className="page-intro">
         Situation, decision support, evidence and workflow state for one
         operational exception.

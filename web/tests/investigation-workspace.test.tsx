@@ -30,6 +30,7 @@ import {
 } from "./helpers/api-mocks";
 import { WorkspaceHeader } from "@/components/investigation/WorkspaceHeader";
 import { SituationImpact } from "@/components/investigation/SituationImpact";
+import { WhyItWasFlagged } from "@/components/investigation/WhyItWasFlagged";
 import { DecisionSupport } from "@/components/investigation/DecisionSupport";
 import { OperationalHistory } from "@/components/investigation/OperationalHistory";
 import { SustainabilitySection } from "@/components/investigation/SustainabilitySection";
@@ -691,13 +692,14 @@ describe("workspace data loading over the API boundary", () => {
 // ==================================================
 
 const INDEX_SECTIONS = [
-  { id: "state", label: "State" },
-  { id: "situation", label: "Situation & Impact" },
-  { id: "decision-support", label: "Decision Support" },
-  { id: "history", label: "History" },
-  { id: "sustainability", label: "Sustainability" },
+  { id: "state", label: "Overview" },
+  { id: "flagged", label: "Why It Was Flagged" },
+  { id: "situation", label: "Operational Context" },
+  { id: "history", label: "Timeline" },
+  { id: "decision-support", label: "Recommendation" },
+  { id: "sustainability", label: "Impact" },
   { id: "advisory", label: "AI Advisory" },
-  { id: "workflow-action", label: "Workflow Action" },
+  { id: "workflow-action", label: "Decision & Action" },
 ];
 
 describe("workspace section index", () => {
@@ -728,7 +730,7 @@ describe("workspace section index", () => {
 
     expect(current).toHaveLength(1);
     expect(current[0]).toHaveAttribute("aria-current", "location");
-    expect(current[0].textContent).toBe("State");
+    expect(current[0].textContent).toBe("Overview");
   });
 
   it("renders nothing without sections", () => {
@@ -962,5 +964,146 @@ describe("progressive disclosure", () => {
       ...document.querySelectorAll("details.sustainability-details"),
     ];
     expect(sustainabilityDetails).toHaveLength(1);
+  });
+});
+
+// ==================================================
+// P13 — WHY IT WAS FLAGGED + INVESTIGATION VOCABULARY
+// ==================================================
+
+describe("why it was flagged", () => {
+  it("states the operational trigger from the context description", () => {
+    const context = makeContext();
+
+    render(
+      <WhyItWasFlagged
+        context={context}
+        state={makeInvestigationState()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Why It Was Flagged" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(context.description)).toBeInTheDocument();
+  });
+
+  it("carries the persisted-evidence standing when the state is available", () => {
+    const state = makeInvestigationState();
+
+    render(
+      <WhyItWasFlagged
+        context={makeContext()}
+        state={state}
+      />,
+    );
+
+    const frames = document.querySelectorAll(".impact-frame.flagged-frame");
+
+    expect(frames).toHaveLength(2);
+    expect(screen.getByText(state.reason)).toBeInTheDocument();
+  });
+
+  it("degrades to the trigger frame alone when the state failed", () => {
+    render(<WhyItWasFlagged context={makeContext()} state={null} />);
+
+    const frames = document.querySelectorAll(".impact-frame.flagged-frame");
+
+    expect(frames).toHaveLength(1);
+    expect(
+      screen.queryByText("Why it needs attention now"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("composes only backend fields — no invented sentences", () => {
+    const context = makeContext();
+
+    render(<WhyItWasFlagged context={context} state={null} />);
+
+    // Every flagged-frame paragraph is a verbatim contract field.
+    const frames = [...document.querySelectorAll(".impact-frame.flagged-frame")];
+
+    expect(frames.length).toBeGreaterThan(0);
+
+    for (const frame of frames) {
+      const paragraph = frame.querySelector("p");
+
+      expect([context.description]).toContain(paragraph?.textContent);
+    }
+  });
+});
+
+describe("P13 investigation section index", () => {
+  it("uses the investigation vocabulary in narrative order", () => {
+    render(<WorkspaceSectionIndex sections={INDEX_SECTIONS} />);
+
+    const nav = screen.getByRole("navigation", {
+      name: "Workspace sections",
+    });
+    const labels = within(nav)
+      .getAllByRole("link")
+      .map((link) => link.textContent);
+
+    expect(labels).toEqual([
+      "Overview",
+      "Why It Was Flagged",
+      "Operational Context",
+      "Timeline",
+      "Recommendation",
+      "Impact",
+      "AI Advisory",
+      "Decision & Action",
+    ]);
+  });
+});
+
+describe("P13 operational timeline", () => {
+  it("renders physical shipment events verbatim with the neutral marker", () => {
+    render(
+      <OperationalHistory
+        entries={[
+          makeHistoryEntry({
+            event: "Departed Origin",
+            detail: "Shipment departed Rotterdam by Sea. (Rotterdam)",
+            timestamp: "2026-09-12 08:00:00",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Departed Origin")).toBeInTheDocument();
+    expect(
+      screen.getByText(/departed Rotterdam by Sea/),
+    ).toBeInTheDocument();
+
+    const marker = document.querySelector(".history-marker");
+
+    expect(marker?.className).toContain("marker-neutral");
+  });
+
+  it("keeps the workflow execution marker while physical events fall back to neutral", () => {
+    render(
+      <OperationalHistory
+        entries={[
+          makeHistoryEntry({ event: "Recovery executed" }),
+          makeHistoryEntry({ event: "Delay Detected" }),
+        ]}
+      />,
+    );
+
+    const markers = [...document.querySelectorAll(".history-marker")];
+
+    expect(markers[0].className).toContain("marker-executed");
+    expect(markers[1].className).toContain("marker-neutral");
+  });
+});
+
+describe("P13 recommendation vocabulary", () => {
+  it("presents the deterministic layer under the new heading", () => {
+    render(<DecisionSupport assessment={makeAssessment()} />);
+
+    expect(
+      screen.getByText("Recommendation & Decision Brief"),
+    ).toBeInTheDocument();
   });
 });

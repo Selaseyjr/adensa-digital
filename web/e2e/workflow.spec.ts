@@ -157,35 +157,53 @@ test.describe("Exception Inbox", () => {
 });
 
 test.describe("Investigation Workspace", () => {
-  test("loads a real exception with its investigation sections", async ({
+  test("investigates a real exception from the Command Centre queue", async ({
     page,
   }) => {
-    await page.goto("/exceptions/EXC-000008");
+    // The planner's path: Command Centre → attention queue →
+    // the exception's investigation workspace.
+    await page.goto("/");
+
+    await page
+      .getByRole("region", { name: "What Needs Attention" })
+      .getByRole("link", { name: /^EXC-\d+$/ })
+      .first()
+      .click();
 
     await expect(
       page.getByRole("heading", { name: "Investigation Workspace", level: 1 }),
     ).toBeVisible();
 
-    // Header identity — real database rows, not fixtures.
+    // 1. IDENTITY — real database rows, not fixtures.
     await expect(
-      page.getByRole("heading", { name: /EXC-000008 — / }),
+      page.getByRole("heading", { name: /^EXC-\d+ — / }),
     ).toBeVisible();
     await expect(
       page.getByText(/Shipment SHP-\d+ · Order ORD-\d+/),
     ).toBeVisible();
 
-    // Every investigation section renders with its real
-    // heading (the W4 workspace hierarchy).
+    // 2–5. The P13 narrative sections render with their real
+    // headings in the investigation vocabulary.
     for (const section of [
+      "Why It Was Flagged",
       "Situation & Impact",
-      "Decision Support",
       "Operational History",
+      "Recommendation & Decision Brief",
       "Sustainability",
     ]) {
       await expect(
         page.getByRole("heading", { name: section, level: 3 }),
       ).toBeVisible();
     }
+
+    // Why It Was Flagged states the persisted operational
+    // trigger — the detection engine's own description field
+    // (also narrated inside the timeline's detection record).
+    await expect(
+      page
+        .getByText(/Estimated arrival .+ is later than required delivery date/)
+        .first(),
+    ).toBeVisible();
 
     // Real persisted evidence, not placeholders.
     await expect(
@@ -195,15 +213,29 @@ test.describe("Investigation Workspace", () => {
       page.locator(".history-list .history-entry").first(),
     ).toBeVisible();
 
+    // The composed timeline carries both layers of the
+    // narrative: the shipment's physical tracking trail
+    // (every seeded shipment records its creation and
+    // departure) and the exception's own detection record.
+    await expect(
+      page.getByText("Shipment Created").first(),
+    ).toBeVisible();
+    await expect(page.locator(".history-list")).toContainText(
+      "Exception detected",
+    );
+
     // The section index links into the workspace anchors.
     const index = page.getByRole("navigation", {
       name: "Workspace sections",
     });
     await expect(
-      index.getByRole("link", { name: "Decision Support" }),
+      index.getByRole("link", { name: "Why It Was Flagged" }),
     ).toBeVisible();
     await expect(
-      index.getByRole("link", { name: "Workflow Action" }),
+      index.getByRole("link", { name: "Recommendation" }),
+    ).toBeVisible();
+    await expect(
+      index.getByRole("link", { name: "Decision & Action" }),
     ).toBeVisible();
 
     // The AI advisory renders its real local brief (the

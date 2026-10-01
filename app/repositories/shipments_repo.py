@@ -130,6 +130,41 @@ def get_latest_recovery_event_id(
     return cursor.fetchone()
 
 
+def get_events_for_shipment(
+    connection,
+    shipment_id,
+):
+    """
+    Return all persisted physical tracking events for one
+    shipment, oldest first.
+
+    Ordering is deterministic in SQL — event_timestamp, then
+    event_id as the tie-break — so equal-timestamp events
+    compose identically on every call regardless of the
+    database's row order.
+    """
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            event_id,
+            shipment_id,
+            event_type,
+            event_timestamp,
+            location,
+            description
+        FROM shipment_events
+        WHERE shipment_id = ?
+        ORDER BY event_timestamp ASC, event_id ASC
+        """,
+        (shipment_id,),
+    )
+
+    return cursor.fetchall()
+
+
 # ==================================================
 # ARRIVAL SCENARIO READS
 # ==================================================

@@ -9,6 +9,7 @@ from app.repositories import exceptions_repo
 from app.repositories import manual_interventions_repo
 from app.repositories import recovery_actions_repo
 from app.repositories import recovery_options_repo
+from app.repositories import shipments_repo
 from app.workflow_engine import (
     REJECTED,
     APPROVED,
@@ -44,6 +45,8 @@ def get_exception_history(
     Sources:
 
     - exceptions.detected_at        -> detection
+    - shipment_events rows          -> the shipment's
+                                      physical tracking trail
     - recovery_options rows         -> evaluated options
     - recovery_actions rows         -> recommendation,
                                       decision, execution
@@ -241,6 +244,49 @@ def get_exception_history(
                     "sequence": len(history),
                 }
             )
+
+    # --------------------------------------------------
+    # PHYSICAL SHIPMENT EVENTS
+    #
+    # The shipment's own persisted tracking trail — created,
+    # departed, hub, customs, delay, arrival, recovery
+    # execution — composed into the same timeline as the
+    # exception/workflow records so the manager reads one
+    # narrative: what happened to the shipment, and how did
+    # Adensa respond. Same HistoryEntry shape, no invented
+    # events: every entry is a shipment_events row.
+    #
+    # 'Recovery Executed' is excluded: the execution engine
+    # records the same fact on both layers, and the workflow
+    # section below already narrates it with full action
+    # context (action id, actor, mode switch) — telling it
+    # twice would read as two executions.
+    # --------------------------------------------------
+
+    for event in shipments_repo.get_events_for_shipment(
+        connection,
+        exception["shipment_id"],
+    ):
+
+        if event["event_type"] == "Recovery Executed":
+            continue
+
+        history.append(
+            {
+                "timestamp": event["event_timestamp"],
+                "event": event["event_type"],
+                "detail": (
+                    f"{event['description']}"
+                    + (
+                        f" ({event['location']})"
+                        if event["location"]
+                        else ""
+                    )
+                ),
+                "actor": "Shipment tracking",
+                "sequence": len(history),
+            }
+        )
 
     # --------------------------------------------------
     # OUTCOME

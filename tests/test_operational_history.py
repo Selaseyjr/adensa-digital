@@ -977,3 +977,420 @@ def test_history_still_open_entry_never_precedes_execution(
 
     finally:
         connection.close()
+
+
+# ==================================================
+# P13: PHYSICAL SHIPMENT EVENTS IN THE TIMELINE
+# ==================================================
+
+# The investigation timeline composes the shipment's own
+# persisted tracking trail (shipment_events) alongside the
+# exception/workflow records, so the manager reads one
+# narrative: what happened to the shipment, and how did
+# Adensa respond. Same HistoryEntry shape, deterministic
+# ordering, no invented events.
+
+
+def _insert_shipment_event(
+    connection,
+    shipment_id,
+    event_id,
+    event_type,
+    event_timestamp,
+    location,
+    description,
+):
+    """Insert one physical tracking event for a shipment."""
+
+    from app.repositories import shipments_repo
+
+    shipments_repo.insert_shipment_events(
+        connection,
+        [
+            (
+                event_id,
+                shipment_id,
+                event_type,
+                event_timestamp,
+                location,
+                description,
+            )
+        ],
+    )
+    connection.commit()
+
+
+def test_history_includes_shipment_events(seeded_database):
+    """
+    The composed timeline contains the shipment's persisted
+    tracking events, carrying the same HistoryEntry shape as
+    every other entry.
+    """
+
+    connection = seeded_database
+
+    try:
+        _insert_shipment_event(
+            connection,
+            "SHP-900002",
+            "EVT-900001",
+            "Departed Origin",
+            "2026-09-12 08:00:00",
+            "Rotterdam",
+            "Shipment departed Rotterdam by Sea.",
+        )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        departure = next(
+            entry
+            for entry in history
+            if entry["event"] == "Departed Origin"
+        )
+
+        assert departure["timestamp"] == "2026-09-12 08:00:00"
+        assert "Rotterdam by Sea" in departure["detail"]
+        assert departure["actor"] == "Shipment tracking"
+        assert isinstance(departure["sequence"], int)
+
+    finally:
+        connection.close()
+
+
+def test_history_shipment_events_do_not_duplicate_recovery_execution(
+    seeded_database,
+):
+    """
+    The execution engine records 'Recovery Executed' on the
+    shipment and the workflow layer narrates the execution
+    with action context. The timeline tells that fact once:
+    the physical duplicate is excluded, the workflow entry
+    remains.
+    """
+
+    connection = seeded_database
+
+    try:
+        action = _create_action(connection)
+        _approve(connection, action)
+
+        services.execute_approved_recovery(
+            connection,
+            action["action_id"],
+        )
+
+        # The physical layer also recorded the execution (as
+        # the engine does); the timeline must still tell the
+        # fact exactly once.
+        _insert_shipment_event(
+            connection,
+            "SHP-900002",
+            "EVT-900002",
+            "Recovery Executed",
+            "2026-09-20 10:00:00",
+            "Network",
+            "Recovery action executed on the shipment.",
+        )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        events = _events(history)
+
+        assert "Recovery executed" in events
+        assert "Recovery Executed" not in events
+
+    finally:
+        connection.close()
+
+
+def test_history_without_shipment_events_still_works(seeded_database):
+    """
+    The conftest seed inserts no shipment events: the
+    timeline must compose exactly the workflow history the
+    exception has always produced — the graceful no-tracking
+    path, unchanged from P8.4.
+    """
+
+    connection = seeded_database
+
+    try:
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        events = _events(history)
+
+        assert "Exception detected" in events
+        assert "Exception still open" in events
+        assert "Departed Origin" not in events
+
+        # The pre-P13 composition is intact.
+        assert events[0] == "Exception detected"
+
+    finally:
+        connection.close()
+
+
+def test_history_shipment_events_ordered_deterministically(
+    seeded_database,
+):
+    """
+    Equal-timestamp events order by the repository's event-id
+    tie-break — deterministic across calls, independent of
+    the database's row order (the events are deliberately
+    inserted out of id order).
+    """
+
+    connection = seeded_database
+
+    try:
+        _insert_shipment_event(
+            connection,
+            "SHP-900002",
+            "EVT-900004",
+            "Customs Processing",
+            "2026-09-13 09:00:00",
+            "European Customs",
+            "Customs processing under way.",
+        )
+
+        _insert_shipment_event(
+            connection,
+            "SHP-900002",
+            "EVT-900003",
+            "Transit Hub",
+            "2026-09-13 09:00:00",
+            "Transit Hub",
+            "Arrived at transit hub.",
+        )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        same_time = [
+            entry["event"]
+            for entry in history
+            if entry["timestamp"] == "2026-09-13 09:00:00"
+            and entry["actor"] == "Shipment tracking"
+        ]
+
+        assert same_time == [
+            "Transit Hub",
+            "Customs Processing",
+        ]
+
+        # Determinism: a second composition returns the
+        # identical order.
+        again = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        assert [entry["event"] for entry in again] == [
+            entry["event"] for entry in history
+        ]
+
+    finally:
+        connection.close()
+
+
+def test_history_shipment_events_interleave_chronologically(
+    seeded_database,
+):
+    """
+    One chronological narrative: a shipment event recorded at
+    the approval moment (an equal timestamp, higher sequence)
+    lands after the decision and before the still-open
+    outcome, and the whole timeline remains ordered —
+    independent of the wall clock.
+    """
+
+    connection = seeded_database
+
+    try:
+        action = _create_action(connection)
+        _approve(connection, action)
+
+        approved_at = (
+            recovery_actions_repo.get_latest_action_for_exception(
+                connection,
+                "EXC-900002",
+            )["approved_at"]
+        )
+
+        _insert_shipment_event(
+            connection,
+            "SHP-900002",
+            "EVT-900005",
+            "Delay Detected",
+            approved_at,
+            "European Customs",
+            "Shipment delayed at customs.",
+        )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900002",
+        )
+
+        events = _events(history)
+
+        detected_index = events.index("Exception detected")
+        approved_index = events.index("Recovery approved")
+        delay_index = events.index("Delay Detected")
+        open_index = events.index("Exception still open")
+
+        assert detected_index < approved_index < delay_index < open_index
+
+        # Dated entries compose chronologically; the undated
+        # option-evaluation entry anchors to detection inside
+        # the service's sort, not in the raw payload.
+        dated = [
+            entry["timestamp"]
+            for entry in history
+            if entry["timestamp"] is not None
+        ]
+
+        assert dated == sorted(dated)
+
+    finally:
+        connection.close()
+
+
+def test_history_multiple_shipment_event_types_compose(
+    seeded_database,
+):
+    """
+    The seed generator's real event vocabulary composes
+    alongside the lifecycle entries without disturbing them.
+    """
+
+    connection = seeded_database
+
+    try:
+        for event_id, event_type in (
+            ("EVT-900006", "Shipment Created"),
+            ("EVT-900007", "Departed Origin"),
+            ("EVT-900008", "Transit Hub"),
+        ):
+            _insert_shipment_event(
+                connection,
+                "SHP-900001",
+                event_id,
+                event_type,
+                "2026-09-12 06:00:00",
+                "Rotterdam",
+                f"{event_type} recorded.",
+            )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900001",
+        )
+
+        events = _events(history)
+
+        for expected in (
+            "Shipment Created",
+            "Departed Origin",
+            "Transit Hub",
+        ):
+            assert expected in events
+
+        # The Low-severity exception's own lifecycle story
+        # (no options, no action) is intact.
+        assert "Recovery options evaluated" not in events
+        assert "Exception still open" in events
+
+    finally:
+        connection.close()
+
+
+def test_history_resolved_exception_with_shipment_events(
+    seeded_database,
+):
+    """
+    A resolved exception composes its tracking trail and
+    resolution outcome together, ordered deterministically.
+    """
+
+    connection = seeded_database
+
+    try:
+        _record_manual_resolution(
+            connection,
+            outcome="Resolved",
+        )
+
+        _insert_shipment_event(
+            connection,
+            "SHP-900001",
+            "EVT-900009",
+            "Delivered",
+            "2026-09-18 16:30:00",
+            "Hamburg",
+            "Shipment delivered in Hamburg.",
+        )
+
+        history = services.get_exception_history(
+            connection,
+            "EXC-900001",
+        )
+
+        events = _events(history)
+
+        assert "Delivered" in events
+        assert "Exception resolved through manual intervention" in events
+        assert "Exception resolved" in events
+
+        timestamps = [
+            entry["timestamp"] or "9999-12-31 23:59:59"
+            for entry in history
+        ]
+
+        assert timestamps == sorted(timestamps)
+
+    finally:
+        connection.close()
+
+
+def test_history_unknown_exception_returns_none_with_events_present(
+    seeded_database,
+):
+    """
+    The unknown-exception contract is unchanged by the
+    shipment-event composition.
+    """
+
+    connection = seeded_database
+
+    try:
+        _insert_shipment_event(
+            connection,
+            "SHP-900002",
+            "EVT-900010",
+            "Departed Origin",
+            "2026-09-12 08:00:00",
+            "Rotterdam",
+            "Shipment departed Rotterdam.",
+        )
+
+        assert (
+            services.get_exception_history(
+                connection,
+                "EXC-DOES-NOT-EXIST",
+            )
+            is None
+        )
+
+    finally:
+        connection.close()
