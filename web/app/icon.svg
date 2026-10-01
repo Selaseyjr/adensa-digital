@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Adensa Digital">
+  <!--
+    Adensa application icon (Visual Identity v1).
+    Source of truth for web/app/favicon.ico — regenerate the
+    ICO from this geometry (see docs/design-system.md).
+    Concept: the A apex (daylight breaking) over horizon lines
+    of descending weight (continuous day / flow) on the Adensa
+    navy tile.
+  -->
+  <rect width="32" height="32" rx="6" fill="#0b1f33"/>
+  <path d="M8 20.5 16 7l8 13.5" fill="none" stroke="#85b8e8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10.5 24h11" stroke="#f2f6fa" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M12.5 27.5h7" stroke="#f2f6fa" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
+</svg>

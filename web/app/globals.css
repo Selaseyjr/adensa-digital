@@ -1,18 +1,45 @@
 /* ==================================================
-   ADENSA DIGITAL — DESIGN FOUNDATIONS (P8.1)
+   ADENSA DIGITAL — VISUAL IDENTITY / DESIGN SYSTEM v1
    ==================================================
-   Design language: clean, restrained, information-dense
-   enterprise operations. The palette is the audited,
-   WCAG-AA-verified scheme; this file formalizes it as
-   tokens, adds the type scale (Inter via next/font),
-   the focus/keyboard system, the reduced-motion strategy
-   and the responsive foundation — without changing any
-   component contract.
+   Design language: calm operational command — cockpit +
+   mission control. This file is the single design-token
+   authority:
+
+     :root            light workspace tokens (audited P8
+                      values preserved verbatim as aliases)
+     [data-theme]     Dark Command Centre remap (same brand,
+                      never an inversion) + explicit reduced
+                      motion opt-in
+     primitives       op-id / metadata / value typography,
+                      icon primitives, motion utilities,
+                      data-viz tokens
+
+   Principles: information before decoration; operational
+   state before generic metrics; brand colour is never
+   semantic status colour; motion communicates meaning.
+   The audited, WCAG-AA-verified P8 scheme remains the
+   substrate — v1 names it, extends it, and adds the dark
+   environment. See docs/design-system.md.
    ================================================== */
 
 :root {
   /* Surfaces and text (P8.9: deepened ground + subtle elevated
      surface; all values contrast-validated against WCAG AA). */
+  /* -- Brand palette ------------------------------------------------
+     Deep Adensa navy is the brand ground (the command chrome);
+     the blues are the operational accent family. Named once,
+     consumed everywhere through the functional aliases below. */
+  --adensa-navy: #0b1f33;
+  --adensa-navy-raised: #0e2740;
+  --adensa-blue: #0f4c81;
+  --adensa-blue-strong: #1d6fb8;
+  --adensa-blue-deep: #0b3a63;
+  --adensa-blue-soft: #85b8e8;   /* the accent on dark chrome   */
+  --adensa-cyan: #2ea8c9;        /* secondary tech accent; data-
+                                    viz secondary series only   */
+  --adensa-day: #f2f6fa;         /* the light accent on navy    */
+
+  /* Neutral system (application ground → text). */
   --bg: #eef1f5;
   --surface: #ffffff;
   --surface-subtle: #f8fafb;
@@ -46,12 +73,45 @@
   --ok-tint: #e3f5ec;
   --neutral-chip: var(--surface-sunken);
 
+  /* -- Semantic system (deliberately separate from the brand
+     palette): success / warning / critical / neutral /
+     informational. These colours communicate operational
+     state only — never decoration, never brand identity. */
+  --semantic-success: var(--ok);
+  --semantic-warning: var(--warning);
+  --semantic-critical: var(--critical);
+  --semantic-neutral: var(--text-tertiary);
+  --semantic-info: var(--accent);
+  --semantic-info-tint: var(--accent-tint);
+
+  /* Text metadata ramp: for timestamps and attribution lines
+     (sized in the type section below). */
+  --text-metadata: #6b7580;
+
   /* Analytical series identities (P8.7.3): one hue per data
      class, never per variable — time-series rates render in
      the audited accent, categorical comparisons in the audited
      success green. */
   --series-rate: var(--accent-strong);
   --series-categorical: var(--ok);
+
+  /* -- Data-viz identity (v1): one visual system for every
+     analytical surface. Plot ground is the panel surface;
+     grids recede; the baseline reads as an axis. Semantic
+     series keep their status hues; the secondary series is
+     the one place the brand's cyan tech accent appears. */
+  --chart-bg: var(--surface);
+  --chart-grid: var(--border);
+  --chart-grid-base: var(--border-strong);
+  --chart-axis: var(--text-secondary);
+  --chart-series-primary: var(--accent-strong);
+  --chart-series-secondary: var(--adensa-cyan);
+  --chart-series-critical: var(--critical);
+  --chart-series-positive: var(--ok);
+  --chart-plot-bg: var(--surface);
+  --chart-tooltip-bg: var(--adensa-navy);
+  --chart-tooltip-text: var(--adensa-day);
+  --chart-empty: var(--text-tertiary);
 
   /* Typography scale (rem on a 16px root; body renders 15px) */
   --font-ui: var(--font-inter), Arial, Helvetica, sans-serif;
@@ -62,6 +122,13 @@
   --text-section: 1.0625rem; /* 17px — section headings           */
   --text-page: 1.5rem;     /* 24px  — page titles                 */
   --text-metric: 1.625rem; /* 26px  — control-tower metrics       */
+  /* v1 type roles: metadata (meta lines), note (fine print),
+     and the operational-identifier treatment (EXC-/SHP-/OPT-:
+     tabular figures + measured letterspacing, weights limited
+     to 400/600 so identifiers read as data, not headings). */
+  --text-metadata: 0.8125rem; /* 13px — meta/timestamps         */
+  --text-note: 0.71875rem;    /* 11.5px — fine print            */
+  --tracking-op-id: 0.02em;   /* identifier letterspacing       */
 
   /* P12.2 command shell (dark): the shell carries Adensa's
      identity — deep navy-charcoal chrome framing light content
@@ -78,6 +145,13 @@
   --shell-muted: #9fb3c8;
   --accent-on-dark: #85b8e8;
   --critical-on-dark: #f97066;
+  /* v1: chrome helpers light-first (hover/current washes and the
+     navy gradient are the light-mode chrome values); the dark
+     theme re-uses the same washes on its own ground. */
+  --shell-hover: rgb(133 184 232 / 0.12);
+  --shell-active: rgb(133 184 232 / 0.2);
+  --shell-current: rgb(133 184 232 / 0.16);
+  --shell-gradient: linear-gradient(180deg, #0d2338 0%, var(--shell-bg) 100%);
 
   /* P12.2 deck typography: the command title steps up on
      desktop via clamp (28→30px); metrics read 26→34px where
@@ -85,7 +159,8 @@
   --text-deck: clamp(1.75rem, 1.4rem + 1.2vw, 1.875rem);
   --text-command: clamp(1.625rem, 1.3rem + 1.4vw, 2.125rem);
 
-  /* Spacing scale */
+  /* Spacing scale (4px base; 10/12 close the rhythm for
+     denser operational rows) */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -93,20 +168,156 @@
   --space-5: 1.25rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
 
-  /* Radius and elevation (restrained) */
+  /* Radius and elevation (restrained: nothing above --radius).
+     --radius-full is reserved for chips, dots and the identity
+     mark — never for cards or panels. */
   --radius-sm: 6px;
   --radius: 8px;
+  --radius-full: 999px;
   --shadow-1: 0 1px 2px rgb(26 32 39 / 0.05);
   --shadow-2: 0 1px 2px rgb(26 32 39 / 0.06), 0 2px 6px rgb(26 32 39 / 0.06);
 
-  /* P8.9: the previously hard-coded repeated values. */
+  /* Control metrics: one control height, one panel padding,
+     one content-column width, one section rhythm. */
+  --control-height: 36px;
+  --pad-panel-x: 24px;
+  --pad-panel-y: 20px;
+  --section-gap: 20px;
+  --layout-max: 1180px;
+
+  /* Motion foundations: two durations, two easings. UI state
+     changes snap in fast; reveals travel on the departure
+     curve. No other durations — motion stays out of the way. */
+  --dur-fast: 150ms;
+  --dur-reveal: 200ms;
+  --ease-standard: ease;
+  --ease-departure: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* P8.9: the previously hard-coded repeated values.
+     v1 adds the on-accent text pair (white on light, near-black
+     on the dark accent) as tokens. */
   --row-hover: var(--surface-subtle);
   --error-border: #f0b3ad;
   --error-surface: #fff8f7;
+  --on-accent: #ffffff;
+  --on-accent-strong: #ffffff;
 
-  /* Focus ring — the single keyboard-focus treatment */
-  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+  /* Focus ring — the single keyboard-focus treatment. v1
+     tokenizes it so the dark theme remaps halo + colour in
+     one place. */
+  --focus-halo: var(--surface);
+  --focus-ring-color: var(--accent);
+  --focus-ring: 0 0 0 2px var(--focus-halo), 0 0 0 4px var(--focus-ring-color);
+}
+
+/* ==================================================
+   DARK COMMAND CENTRE (v1)
+   ==================================================
+   The full operational environment: deep navy ground,
+   raised navy surfaces, the Adensa blue softened for
+   dark legibility. This is a re-lit Adensa, not an
+   inversion — surfaces shift blue-black, semantic hues
+   step to their on-dark variants, and the same component
+   contracts render unchanged. The shell chrome tokens
+   (--shell-*) intentionally alias the same values, so the
+   P12.2 header/deck and this theme are one system.
+
+   Activation: [data-theme="dark"] on <html>, set by the
+   theme toggle (web/components/ThemeToggle.tsx) with the
+   init script in layout.tsx (no flash, localStorage
+   persistence, falls back to the light workspace). */
+
+[data-theme="dark"] {
+  /* Ground and surfaces. */
+  --bg: #0b1f33;                    /* the Adensa navy ground */
+  --surface: #12293f;               /* raised panel           */
+  --surface-subtle: #0e2238;
+  --surface-sunken: #0a1c2e;
+  --border: #1e3a52;
+  --border-strong: #2d4e6b;
+
+  /* Text ramp. */
+  --text: #f2f6fa;
+  --text-secondary: #c1cfdc;
+  --text-tertiary: #9fb3c8;
+  --text-muted: #9fb3c8;
+  --text-metadata: #9fb3c8;
+
+  /* Accent family on dark: the same Adensa blues, lifted. */
+  --accent: #85b8e8;
+  --accent-strong: #a8cdf0;
+  --accent-dark: #cde2f6;           /* "darker" emphasis = brighter
+                                       here; aliases stay honest   */
+  --accent-tint: #16324b;
+
+  /* Semantic hues re-lit for dark surfaces (AA-checked by
+     construction against --surface; tints are deep washes). */
+  --critical: #f97066;
+  --critical-tint: #3b1a1c;
+  --warning: #f5a962;
+  --warning-tint: #3a2a14;
+  --ok: #67c98f;
+  --ok-tint: #143528;
+
+  /* Semantic aliases follow their sources. */
+  --semantic-success: var(--ok);
+  --semantic-warning: var(--warning);
+  --semantic-critical: var(--critical);
+  --semantic-neutral: var(--text-tertiary);
+  --semantic-info: var(--accent);
+  --semantic-info-tint: var(--accent-tint);
+
+  /* Analytical series and the chart canvas. */
+  --series-rate: #85b8e8;
+  --series-categorical: #67c98f;
+  --chart-bg: var(--surface);
+  --chart-grid: #1e3a52;
+  --chart-grid-base: #2d4e6b;
+  --chart-axis: #9fb3c8;
+  --chart-series-primary: #85b8e8;
+  --chart-series-secondary: #56c1dd;
+  --chart-series-critical: #f97066;
+  --chart-series-positive: #67c98f;
+  --chart-plot-bg: var(--surface);
+  --chart-tooltip-bg: #06121f;
+  --chart-tooltip-text: #f2f6fa;
+  --chart-empty: #7a8ea3;
+
+  /* Chrome helpers for dark-native surfaces. */
+  --shell-hover: rgb(133 184 232 / 0.12);
+  --shell-active: rgb(133 184 232 / 0.2);
+  --shell-current: rgb(133 184 232 / 0.16);
+  --shell-gradient: linear-gradient(180deg, #0d2338 0%, var(--shell-bg) 100%);
+
+  /* Elevation in a dark environment: borders carry the
+     depth, shadows barely register. */
+  --shadow-1: none;
+  --shadow-2: 0 1px 2px rgb(1 8 15 / 0.4);
+  --row-hover: #16324b;
+  --error-border: #6b2d2a;
+  --error-surface: #24141a;
+
+  --focus-halo: #0b1f33;
+  --focus-ring-color: #85b8e8;
+  --focus-ring: 0 0 0 2px var(--focus-halo), 0 0 0 4px var(--focus-ring-color);
+
+  /* Dark-native aliases for the one-off on-dark pairs. */
+  --on-accent: #06121f;
+}
+
+/* Explicit reduced-motion opt-in: the same v1 hook for the
+   toggle and tests that prefers-reduced-motion serves for
+   the OS setting. */
+[data-motion="reduced"] *,
+[data-motion="reduced"] *::before,
+[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 * {
@@ -117,11 +328,12 @@
 
 html,
 body {
-  max-width: 100vw;
-  /* `clip` (not `hidden`): hidden would make the body a scroll
-     container, which breaks position:sticky for the workspace
-     section index. clip prevents horizontal overflow without
-     creating a clip-scroll box. */
+  /* Percent (not 100vw): 100vw includes the scrollbar width,
+     which manufactures horizontal overflow. `clip` (not
+     `hidden`) prevents horizontal overflow without making the
+     body a scroll container, which would break the sticky
+     workspace section index. */
+  max-width: 100%;
   overflow-x: clip;
 }
 
@@ -132,6 +344,93 @@ body {
   font-size: var(--text-body);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ==================================================
+   TYPOGRAPHY PRIMITIVES (v1)
+   ==================================================
+   Data typography: operational identifiers, metadata and
+   analytical values are data, not prose. Tabular figures
+   keep columns comparable; the op-id letterspacing sets
+   identifiers apart without shouting. Weights stay within
+   400/600 — the system never needs more.
+
+   .op-id is a component-level opt-in for standalone
+   identifier surfaces (queue links, workspace title, table
+   cells, option ids); inline references inside sentences
+   inherit body style so paragraphs stay quiet. */
+
+.op-id {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-op-id);
+  font-weight: 600;
+}
+
+.text-metadata {
+  font-size: var(--text-metadata);
+  color: var(--text-metadata);
+  font-variant-numeric: tabular-nums;
+}
+
+.text-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.text-note {
+  font-size: var(--text-note);
+  color: var(--text-tertiary);
+}
+
+/* ==================================================
+   ICONOGRAPHY PRIMITIVES (v1)
+   ==================================================
+   One inline-SVG system: stroke-based, 1.5px weight, round
+   caps, currentColor, optical 24px grid scaled by em. No
+   fill glyphs, no decorative logistics icons — the mark
+   (BrandMark) and these primitives are the entire vocabulary.
+   Color is inherited so status colours flow from context,
+   never from the icon. */
+
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}
+
+.icon--sm { font-size: 0.875rem; }
+.icon--lg { font-size: 1.25rem; }
+
+/* ==================================================
+   MOTION FOUNDATIONS (v1)
+   ==================================================
+   Motion communicates: live change, attention, state,
+   progression. Two tokenized durations; nothing decorative.
+   Numeric counters animate on viewport entry where present;
+   critical attention is one quiet pulse, never a flash.
+   All motion neutralized by prefers-reduced-motion and the
+   explicit [data-motion="reduced"] opt-in above. */
+
+@keyframes adensa-attention {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(180 35 24 / 0); }
+  50% { box-shadow: 0 0 0 3px rgb(180 35 24 / 0.18); }
+}
+
+.attention-critical {
+  animation: adensa-attention 2s ease-in-out 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attention-critical {
+    animation: none;
+  }
 }
 
 a {
@@ -189,7 +488,7 @@ textarea:focus-visible,
   top: -100%;
   z-index: 100;
   background: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
   font-size: var(--text-base);
   font-weight: 600;
   padding: var(--space-2) var(--space-4);
@@ -215,17 +514,28 @@ textarea:focus-visible,
   align-items: center;
   justify-content: space-between;
   gap: var(--space-6);
-  padding: 14px 32px;
-  /* P12.2 command shell: deep navy chrome framing light
-     content; a barely-perceptible tonal step (not decoration)
-     gives the bar a hint of elevation above the page. */
-  background: linear-gradient(180deg, #0d2338 0%, var(--shell-bg) 100%);
+  padding: 14px var(--pad-panel-x);
+  /* P12.2 command shell, tokenized in v1: deep navy chrome
+     framing light content; a barely-perceptible tonal step
+     (not decoration) gives the bar a hint of elevation. */
+  background: var(--shell-gradient);
   border-bottom: 1px solid var(--shell-border);
 }
 
 .app-brand {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The identity mark: a replaceable brand component
+   (web/components/brand/BrandMark.tsx) rendered at one size
+   here and standalone as the favicon source. All SVG styling
+   lives inside the component — no mark markup is scattered. */
+.app-brand-mark {
+  width: 30px;
+  height: 30px;
+  display: block;
 }
 
 .app-brand-name {
@@ -236,8 +546,10 @@ textarea:focus-visible,
 }
 
 .app-brand-sub {
-  font-size: var(--text-sm);
+  display: block;
+  font-size: var(--text-note);
   color: var(--shell-muted);
+  letter-spacing: 0.04em;
 }
 
 /* The primary navigation is the <ul class="app-nav"> itself
@@ -253,26 +565,28 @@ textarea:focus-visible,
 }
 
 .app-nav a {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--control-height) - 6px);
   padding: 8px 14px;
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
   color: var(--shell-muted);
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
 
 .app-nav a:hover {
-  background: rgba(133, 184, 232, 0.12);
+  background: var(--shell-hover);
   color: var(--shell-text);
 }
 
 .app-nav a:active {
-  background: rgba(133, 184, 232, 0.2);
+  background: var(--shell-active);
   color: var(--shell-text);
 }
 
 .app-nav a[aria-current="page"] {
-  background: rgba(133, 184, 232, 0.16);
+  background: var(--shell-current);
   color: var(--accent-on-dark);
   font-weight: 600;
 }
@@ -290,17 +604,32 @@ textarea:focus-visible,
 .app-main {
   flex: 1;
   width: 100%;
-  max-width: 1180px;
+  max-width: var(--layout-max);
   margin: 0 auto;
-  padding: 28px 32px 48px;
+  padding: 28px var(--pad-panel-x) 48px;
 }
 
 .app-footer {
-  padding: 14px 32px;
+  padding: 14px var(--pad-panel-x);
   background: var(--shell-bg);
   border-top: 1px solid var(--shell-border);
   color: var(--shell-muted);
   font-size: var(--text-sm);
+}
+
+/* v1 footer brand line: identity repetition at the product's
+   edge — mark, name, and the standing human-in-the-loop
+   statement (copy unchanged). */
+.app-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.app-footer-brand .app-brand-mark {
+  width: 18px;
+  height: 18px;
 }
 
 .page-title {
@@ -311,9 +640,9 @@ textarea:focus-visible,
 }
 
 .page-intro {
-  color: var(--text-muted);
+  color: var(--text-metadata);
   font-size: 0.84375rem; /* 13.5px */
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
   max-width: 72ch;
 }
 
@@ -327,7 +656,7 @@ textarea:focus-visible,
    light .page-title/.page-intro treatment. */
 
 .command-deck {
-  background: linear-gradient(180deg, #0d2338 0%, var(--shell-bg) 100%);
+  background: var(--shell-gradient);
   border: 1px solid var(--shell-border);
   border-radius: var(--radius);
   padding: 22px 24px 24px;
@@ -363,7 +692,7 @@ textarea:focus-visible,
   border-left: none;
   border-right: none;
   border-top: none;
-  padding: 28px max(32px, calc((100% - 1180px) / 2 + 32px)) 24px;
+  padding: 28px max(32px, calc((100% - var(--layout-max)) / 2 + 32px)) 24px;
 }
 
 /* KPI tiles: dark command-deck surfaces, light-on-dark text,
@@ -383,12 +712,12 @@ textarea:focus-visible,
   border-radius: var(--radius);
   box-shadow: inset 0 2px 0 var(--accent-on-dark);
   padding: 14px 16px 12px;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
 }
 
 .deck-metric:hover {
-  border-color: rgba(133, 184, 232, 0.55);
-  box-shadow: inset 0 2px 0 var(--shell-text), 0 0 0 1px rgba(133, 184, 232, 0.35);
+  border-color: rgb(133 184 232 / 0.55);
+  box-shadow: inset 0 2px 0 var(--shell-text), 0 0 0 1px rgb(133 184 232 / 0.35);
 }
 
 .deck-metric:focus-visible {
@@ -457,9 +786,9 @@ textarea:focus-visible,
 }
 
 .page-intro {
-  color: var(--text-muted);
+  color: var(--text-metadata);
   font-size: 0.84375rem; /* 13.5px */
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
   max-width: 72ch;
 }
 
@@ -468,8 +797,8 @@ textarea:focus-visible,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
-  padding: 20px 24px;
-  margin-bottom: 20px;
+  padding: var(--pad-panel-y) var(--pad-panel-x);
+  margin-bottom: var(--section-gap);
 }
 
 .section-title {
@@ -509,7 +838,7 @@ textarea:focus-visible,
   border-radius: var(--radius);
   box-shadow: var(--shadow-1), inset 0 2px 0 var(--accent);
   padding: 14px 16px;
-  transition: box-shadow 150ms ease, border-color 150ms ease;
+  transition: box-shadow var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
 
 .metric:hover {
@@ -541,6 +870,7 @@ textarea:focus-visible,
   line-height: 1.1;
   /* Operational counts read as data, not prose. */
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* P8.9: the one KPI where the value itself is the urgency —
@@ -594,7 +924,7 @@ textarea:focus-visible,
 }
 
 .data-table tbody tr {
-  transition: background-color 150ms ease;
+  transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .data-table tbody tr:hover {
@@ -604,7 +934,7 @@ textarea:focus-visible,
 .queue-link {
   color: var(--accent);
   font-weight: 600;
-  transition: color 150ms ease, text-decoration-color 150ms ease;
+  transition: color var(--dur-fast) var(--ease-standard), text-decoration-color var(--dur-fast) var(--ease-standard);
 }
 
 .queue-link:hover {
@@ -631,7 +961,7 @@ textarea:focus-visible,
 .chip {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
@@ -676,7 +1006,7 @@ textarea:focus-visible,
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   margin-right: 6px;
   vertical-align: middle;
   background: var(--border-strong);
@@ -788,7 +1118,7 @@ textarea:focus-visible,
 
 .breadcrumb a {
   color: var(--accent);
-  transition: color 150ms ease, text-decoration-color 150ms ease;
+  transition: color var(--dur-fast) var(--ease-standard), text-decoration-color var(--dur-fast) var(--ease-standard);
 }
 
 .breadcrumb a:hover {
@@ -938,7 +1268,7 @@ textarea:focus-visible,
   flex: 0 0 10px;
   width: 10px;
   height: 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   margin-top: 5px;
   background: var(--border-strong);
   border: 2px solid var(--surface);
@@ -1040,14 +1370,14 @@ textarea:focus-visible,
 .workspace-index-link {
   display: inline-block;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: var(--text-sm);
   color: var(--text-muted);
   border: 1px solid transparent;
   transition:
-    color 150ms ease,
-    background-color 150ms ease,
-    border-color 150ms ease;
+    color var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
 }
 
 .workspace-index-link:hover {
@@ -1156,7 +1486,7 @@ textarea:focus-visible,
   /* Deliberate disclosure marker replaces the browser's
      default summary bullet. */
   list-style: none;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
 
 .subsection-summary::-webkit-details-marker {
@@ -1172,7 +1502,7 @@ textarea:focus-visible,
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   margin-right: 8px;
-  transition: transform 150ms ease;
+  transition: transform var(--dur-fast) var(--ease-standard);
 }
 
 .subsection-details[open] > .subsection-summary::before {
@@ -1268,13 +1598,13 @@ textarea:focus-visible,
   appearance: none;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
   padding: 0.45rem 0.9rem;
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
   font-family: inherit;
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
 
 .action-button:hover:not(:disabled) {
@@ -1325,7 +1655,7 @@ textarea:focus-visible,
   font-family: inherit;
   color: var(--text);
   background: var(--surface);
-  transition: border-color 150ms ease;
+  transition: border-color var(--dur-fast) var(--ease-standard);
 }
 
 .action-field input:focus-visible,
@@ -1486,7 +1816,7 @@ textarea:focus-visible,
 .band-track {
   display: flex;
   width: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   overflow: hidden;
   background: var(--surface-sunken);
   border: 1px solid var(--border);
@@ -1496,7 +1826,7 @@ textarea:focus-visible,
   display: block;
   height: 100%;
   transform-origin: left center;
-  animation: band-reveal 200ms ease-out both;
+  animation: band-reveal var(--dur-reveal) var(--ease-departure) both;
 }
 
 .band-segment-empty {
@@ -1570,7 +1900,7 @@ textarea:focus-visible,
   position: relative;
   display: block;
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent-tint);
   border: 1px solid var(--border);
 }
@@ -1827,8 +2157,8 @@ textarea:focus-visible,
   /* Full-bleed deck at the mid tier: match the mid padding. */
   .deck-bleed {
     margin: -24px -24px 18px;
-    padding-left: max(24px, calc((100% - 1180px) / 2 + 24px));
-    padding-right: max(24px, calc((100% - 1180px) / 2 + 24px));
+    padding-left: max(24px, calc((100% - var(--layout-max)) / 2 + 24px));
+    padding-right: max(24px, calc((100% - var(--layout-max)) / 2 + 24px));
   }
 }
 
@@ -2032,7 +2362,7 @@ textarea:focus-visible,
 }
 
 .chart-reveal {
-  animation: chart-reveal 200ms ease-out both;
+  animation: chart-reveal var(--dur-reveal) var(--ease-departure) both;
 }
 
 @keyframes chart-reveal {
@@ -2105,15 +2435,15 @@ textarea:focus-visible,
   min-height: 36px;
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--surface);
   color: var(--text);
   font-size: var(--text-base);
   line-height: 1.2;
   transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease;
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
 }
 
 .analytics-chip:hover span {
@@ -2134,7 +2464,7 @@ textarea:focus-visible,
 .analytics-panel .analytics-context,
 .analytics-panel .analytics-empty-note,
 .analytics-panel .chart-figure {
-  transition: opacity 150ms ease;
+  transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 .analytics-panel.is-muted .analytics-context,
@@ -2237,13 +2567,13 @@ textarea:focus-visible,
   color: var(--accent-dark);
   font-weight: 600;
   text-decoration: none;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
 
 .op-single-link:hover {
   background: var(--accent);
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .op-single-link:focus-visible {
@@ -2338,4 +2668,192 @@ textarea:focus-visible,
   margin: 10px 0 0;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
+}
+
+/* ==================================================
+   V1 THEME REMAP — DARK SURFACES FOR LIGHT-DEFAULT RULES
+   ==================================================
+   Components style themselves from tokens, so the dark
+   Command Centre needs no component edits: only rules whose
+   *property choice* is light-native are re-expressed here.
+   Every block below is inert in light mode.
+   ================================================== */
+
+/* Focus ring inside dark-native surfaces (nav/deck): the halo
+   follows the surface it sits on. */
+[data-theme="dark"] .app-nav a:focus-visible,
+[data-theme="dark"] .skip-link:focus-visible {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-on-dark);
+  border-radius: var(--radius-sm);
+}
+
+/* Solid-surface halos become dark-ground halos. */
+[data-theme="dark"] .metric:focus-visible,
+[data-theme="dark"] .op-single-link:focus-visible,
+[data-theme="dark"] .op-exception-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Action controls: --accent dark-remaps to the on-dark blue,
+   so solid buttons need their near-black ink for contrast. */
+[data-theme="dark"] .action-button,
+[data-theme="dark"] .action-button:hover:not(:disabled),
+[data-theme="dark"] .action-button:active:not(:disabled) {
+  color: var(--on-accent);
+}
+
+/* op-single-link hover fills with accent (now the light on-dark
+   blue); ink follows the same rule. */
+[data-theme="dark"] .op-single-link:hover {
+  color: var(--on-accent);
+}
+
+/* -- Data-viz identity (v1) --------------------------------------
+   The analytical canvas: receding dot grids on the plot
+   surface, a solid baseline, and a series vocabulary driven
+   entirely by tokens (primary accent, secondary cyan,
+   semantic critical/positive). Fallback tables keep .visually-hidden;
+   empty and loading states keep the calm state-panel language. */
+
+.chart-grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.chart-grid.grid-base {
+  stroke-dasharray: none;
+  stroke: var(--chart-grid-base);
+}
+
+.chart-figure svg {
+  background: var(--chart-plot-bg);
+  border-radius: var(--radius-sm);
+}
+
+.chart-path {
+  stroke: var(--chart-series-primary);
+}
+
+.chart-dot {
+  fill: var(--chart-series-primary);
+  stroke: var(--chart-plot-bg);
+  stroke-width: 1.5;
+}
+
+.chart-axis-label {
+  fill: var(--chart-axis);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-fill {
+  fill: var(--chart-series-primary);
+}
+
+.bar-track {
+  stroke: var(--surface-sunken);
+}
+
+/* Readout: the command-deck tooltip treatment — navy plate,
+   day text, tabular value. Position-only logic is unchanged. */
+.chart-readout-dot {
+  fill: var(--chart-series-primary);
+  stroke: var(--chart-plot-bg);
+}
+
+.chart-readout-value {
+  fill: var(--chart-tooltip-text);
+  paint-order: stroke;
+  stroke: var(--chart-tooltip-bg);
+  stroke-width: 3px;
+}
+
+/* -- Typography applications (v1) -------------------------------- */
+
+/* Operational identifiers: standalone surfaces carrying
+   EXC-/SHP-/OPT- references read as technical data. The first
+   column of every operational table and the queue link are
+   identifier territory; inline sentence references
+   deliberately keep body style. */
+.queue-link,
+.workspace-header-meta,
+.data-table td:first-child {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-op-id);
+}
+
+/* Values and timestamps: tabular by construction. */
+.metric-value,
+.deck-metric-value,
+.band-counts,
+.history-timestamp,
+.op-figure-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Empty/loading chart states stay in the shared calm state
+   language (StatePanels); the chart canvas note uses the
+   metadata voice. */
+.chart-empty-note {
+  font-size: var(--text-metadata);
+  color: var(--chart-empty);
+}
+
+/* -- v1 end ------------------------------------------------------ */
+
+/* ==================================================
+   THEME TOGGLE (v1) — Command Centre switch
+   ==================================================
+   Lives in the header chrome, so it speaks the shell
+   vocabulary (muted → text on hover) rather than the page
+   control vocabulary. The label names the environment being
+   offered, never the state; aria-pressed carries the state.
+   ================================================== */
+
+.app-header-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.theme-toggle {
+  appearance: none;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--shell-muted);
+  background: transparent;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-full);
+  padding: 5px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), background-color var(--dur-fast) var(--ease-standard);
+}
+
+.theme-toggle:hover {
+  color: var(--shell-text);
+  border-color: var(--accent-on-dark);
+  background: var(--shell-hover);
+}
+
+/* Focus inside the dark chrome: dark halo, on-dark accent. */
+.theme-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--shell-bg), 0 0 0 4px var(--accent-on-dark);
+  border-radius: var(--radius-full);
+}
+
+@media (max-width: 640px) {
+  .app-header-end {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .theme-toggle {
+    padding: 4px 10px;
+  }
 }
